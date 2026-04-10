@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step done"><span class="step-num">✓</span> Stap 1 · Basisgegevens</div>
+  <span class="step-arrow">›</span>
+  <div class="step done"><span class="step-num">✓</span> Stap 2 · Externe bronnen</div>
+  <span class="step-arrow">›</span>
+  <div class="step active"><span class="step-num">3</span> Stap 3 · Filter &amp; Kleur</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">4</span> Stap 4 · Genereer</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">5</span> Stap 5 · Download</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Filter &amp; Kleur</h2>
+    <p class="subtitle">
+      Stel optioneel een filter in op een kolomwaarde, en kies daarna de kleur voor de laag.
+    </p>
+  </div>
+
+  <div class="card-body">
+
+    <!-- ── Filtering ────────────────────────────── -->
+    <div class="section-label">Is er een filtering nodig?</div>
+
+    <div class="choice-row">
+      <button class="choice-btn" id="btn-nee" onclick="setFilter(false)">
+        <span class="choice-icon">✕</span> Nee
+      </button>
+      <button class="choice-btn" id="btn-ja" onclick="setFilter(true)">
+        <span class="choice-icon">✓</span> Ja
+      </button>
+    </div>
+
+    <div id="filter-fields" style="display:none; margin-top:20px;">
+      <div class="section-label">Filtercriteria</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>
+            Kolomnaam
+            <span class="tooltip-icon">?
+              <span class="tooltip-text">De naam van de kolom waarop gefilterd wordt. Bijv. <strong>type</strong>.</span>
+            </span>
+          </label>
+          <input type="text" id="filter_kolom" placeholder="bijv. type" autocomplete="off"/>
+        </div>
+        <div class="form-group">
+          <label>
+            Waarde
+            <span class="tooltip-icon">?
+              <span class="tooltip-text">De waarde om op te filteren. Bijv. <strong>actief</strong>.</span>
+            </span>
+          </label>
+          <input type="text" id="filter_waarde" placeholder="bijv. actief" autocomplete="off"/>
+        </div>
+      </div>
+      <div id="filter-preview" class="filter-preview" style="display:none;">
+        <span class="preview-label">SQL preview</span>
+        <code id="preview-sql"></code>
+      </div>
+    </div>
+
+    <!-- ── Kleurselectie ─────────────────────────── -->
+    <div class="section-label" style="margin-top:32px;">Kleurselectie</div>
+    <p style="font-size:13.5px; color:var(--ink-3); margin-bottom:16px;">
+      Kies een kleur voor de geometrie. De lijnkleur wordt automatisch gelijkgesteld aan de gekozen kleur.
+    </p>
+
+    <div class="color-palette" id="color-palette">
+      <!-- Swatches worden door JS gegenereerd -->
+    </div>
+
+    <div class="selected-color-row" id="selected-color-row" style="display:none;">
+      <div class="selected-swatch" id="selected-swatch"></div>
+      <div>
+        <div style="font-size:12px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em;">Geselecteerde kleur</div>
+        <div style="font-family:var(--font-mono); font-size:15px; color:var(--ink);" id="selected-hex"></div>
+      </div>
+    </div>
+
+    <!-- ── Navigatie ─────────────────────────────── -->
+    <div class="btn-row">
+      <a href="/scenario2" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Vorige
+      </a>
+      <button id="btn-next" class="btn btn-primary" onclick="goNext()"
+              disabled style="opacity:.4; cursor:not-allowed;">
+        Volgende
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .choice-row { display: flex; gap: 16px; }
+
+  .choice-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 32px;
+    border-radius: var(--radius);
+    border: 2px solid var(--border);
+    background: var(--white);
+    font-family: var(--font-body); font-size: 15px; font-weight: 600;
+    color: var(--ink-2); cursor: pointer; transition: all .15s;
+  }
+  .choice-btn:hover { border-color: var(--ink-3); background: var(--surface); }
+  .choice-btn.selected-nee { border-color: var(--step-done); background: #f0faf4; color: var(--step-done); }
+  .choice-btn.selected-ja  { border-color: var(--red); background: #fff8f8; color: var(--red); }
+
+  .filter-preview {
+    margin-top: 16px; background: #1a1a2e; border-radius: var(--radius);
+    padding: 12px 18px; display: flex; align-items: center; gap: 14px;
+  }
+  .preview-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #888; white-space: nowrap; }
+  .filter-preview code { font-family: var(--font-mono); font-size: 13px; color: #7dd3fc; }
+
+  /* ── Kleurpalet ─────────────────────────────── */
+  .color-palette {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+
+  .color-swatch-btn {
+    width: 48px; height: 48px;
+    border-radius: 8px;
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: transform .15s, border-color .15s, box-shadow .15s;
+    position: relative;
+  }
+
+  .color-swatch-btn:hover {
+    transform: scale(1.12);
+    box-shadow: 0 4px 12px rgba(0,0,0,.2);
+  }
+
+  .color-swatch-btn.selected {
+    border-color: var(--ink);
+    box-shadow: 0 0 0 2px white, 0 0 0 4px var(--ink);
+    transform: scale(1.1);
+  }
+
+  .color-swatch-btn .checkmark {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 20px;
+    font-weight: 700;
+    text-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+
+  .color-swatch-btn.selected .checkmark { display: flex; }
+
+  .selected-color-row {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin-bottom: 8px;
+  }
+
+  .selected-swatch {
+    width: 40px; height: 40px;
+    border-radius: 6px;
+    border: 1.5px solid rgba(0,0,0,.1);
+    flex-shrink: 0;
+  }
+</style>
+
+<script>
+  const KLEUREN = [
+    '#1F4892', '#489B4A', '#912474',
+    '#F09439', '#757575', '#459ADF', '#D1327F'
+  ];
+
+  let filterAan    = null;
+  let gekozenKleur = null;
+
+  // ── Kleurpalet opbouwen ──────────────────────
+  const palette = document.getElementById('color-palette');
+  KLEUREN.forEach(hex => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'color-swatch-btn';
+    btn.style.background = hex;
+    btn.title = hex;
+    btn.dataset.hex = hex;
+    btn.innerHTML = '<span class="checkmark">✓</span>';
+    btn.addEventListener('click', () => selectKleur(hex));
+    palette.appendChild(btn);
+  });
+
+  function selectKleur(hex) {
+    gekozenKleur = hex;
+    // Alle swatches deselecteren
+    document.querySelectorAll('.color-swatch-btn').forEach(b => b.classList.remove('selected'));
+    // Geselecteerde markeren
+    document.querySelector(`.color-swatch-btn[data-hex="${hex}"]`).classList.add('selected');
+    // Preview tonen
+    const row = document.getElementById('selected-color-row');
+    row.style.display = 'flex';
+    document.getElementById('selected-swatch').style.background = hex;
+    document.getElementById('selected-hex').textContent = hex;
+    tryEnableNext();
+  }
+
+  // ── Filter ───────────────────────────────────
+  function setFilter(ja) {
+    filterAan = ja;
+    document.getElementById('btn-ja').className  = 'choice-btn' + (ja  ? ' selected-ja'  : '');
+    document.getElementById('btn-nee').className = 'choice-btn' + (!ja ? ' selected-nee' : '');
+    document.getElementById('filter-fields').style.display = ja ? 'block' : 'none';
+    tryEnableNext();
+    if (ja) updatePreview();
+  }
+
+  function updatePreview() {
+    const kolom  = document.getElementById('filter_kolom').value.trim();
+    const waarde = document.getElementById('filter_waarde').value.trim();
+    const preview = document.getElementById('filter-preview');
+    document.getElementById('preview-sql').textContent = `WHERE ${kolom} = '${waarde}'`;
+    preview.style.display = (kolom && waarde) ? 'flex' : 'none';
+  }
+
+  document.getElementById('filter_kolom').addEventListener('input', updatePreview);
+  document.getElementById('filter_waarde').addEventListener('input', updatePreview);
+
+  // ── Volgende knop ────────────────────────────
+  function tryEnableNext() {
+    const ok = filterAan !== null && gekozenKleur !== null;
+    const btn = document.getElementById('btn-next');
+    btn.disabled      = !ok;
+    btn.style.opacity = ok ? '1' : '.4';
+    btn.style.cursor  = ok ? 'pointer' : 'not-allowed';
+  }
+
+  function goNext() {
+    if (filterAan === null || gekozenKleur === null) return;
+
+    const kolom  = document.getElementById('filter_kolom').value.trim();
+    const waarde = document.getElementById('filter_waarde').value.trim();
+
+    if (filterAan && (!kolom || !waarde)) {
+      document.getElementById('filter_kolom').style.borderColor  = kolom  ? '' : 'var(--red)';
+      document.getElementById('filter_waarde').style.borderColor = waarde ? '' : 'var(--red)';
+      return;
+    }
+
+    sessionStorage.setItem('wms_step3', JSON.stringify({
+      filter_aan:    filterAan,
+      filter_kolom:  filterAan ? kolom  : '',
+      filter_waarde: filterAan ? waarde : '',
+      color:     gekozenKleur,
+      outline: gekozenKleur,   // lijnkleur = zelfde als invulkleur
+    }));
+
+    window.location.href = '/scenario4';
+  }
+
+  // ── Herstel opgeslagen waarden ───────────────
+  const saved = JSON.parse(sessionStorage.getItem('wms_step3') || '{}');
+  if (saved.filter_aan === true)  setFilter(true);
+  if (saved.filter_aan === false) setFilter(false);
+  if (saved.filter_kolom)  document.getElementById('filter_kolom').value  = saved.filter_kolom;
+  if (saved.filter_waarde) document.getElementById('filter_waarde').value = saved.filter_waarde;
+  if (saved.color) selectKleur(saved.color);
+</script>
+{% endblock %}

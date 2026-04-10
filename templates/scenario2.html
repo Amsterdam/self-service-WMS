@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step done"><span class="step-num">✓</span> Stap 1 · Basisgegevens</div>
+  <span class="step-arrow">›</span>
+  <div class="step active"><span class="step-num">2</span> Stap 2 · Externe bronnen</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">3</span> Stap 3 · Filter</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">4</span> Stap 4 · Genereer</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">5</span> Stap 5 · Download</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Gegevens uit externe bronnen halen</h2>
+    <p class="subtitle">
+      Vul de drie URL's in en klik op <strong>Gegevens ophalen</strong>. De benodigde gegevens worden
+      automatisch uit het Amsterdamse schema en de DSO API opgehaald.
+    </p>
+  </div>
+
+  <div class="card-body">
+
+    <!-- ── URL invoervelden ──────────────────────── -->
+    <div class="section-label">URL's</div>
+
+    <div style="display:flex; flex-direction:column; gap:16px;">
+
+      <div class="form-group">
+        <label>
+          Amsterdam Schema — Dataset URL <span class="req">*</span>
+          <span class="tooltip-icon">?
+            <span class="tooltip-text">
+              De URL naar het <strong>dataset.json</strong> bestand in het Amsterdam Schema.
+              Bijv. het water dataset bestand op GitHub.
+            </span>
+          </span>
+        </label>
+        <input type="url" id="url_dataset" name="url_dataset"
+               placeholder="https://github.com/Amsterdam/amsterdamschema/blob/master/datasets/water/dataset.json"
+               autocomplete="off"/>
+      </div>
+
+      <div class="form-group">
+        <label>
+          Amsterdam Schema — Tabel URL <span class="req">*</span>
+          <span class="tooltip-icon">?
+            <span class="tooltip-text">
+              De URL naar het <strong>tabel JSON</strong> bestand (bijv. v3.json) in het Amsterdam Schema.
+              Hieruit wordt onder andere de geometriekolom opgehaald.
+            </span>
+          </span>
+        </label>
+        <input type="url" id="url_tabel" name="url_tabel"
+               placeholder="https://github.com/Amsterdam/amsterdamschema/blob/master/datasets/water/binnenwater/v3.json"
+               autocomplete="off"/>
+      </div>
+
+      <div class="form-group">
+        <label>
+          DSO API URL <span class="req">*</span>
+          <span class="tooltip-icon">?
+            <span class="tooltip-text">
+              De URL naar het DSO API eindpunt. Hieruit wordt het geometrietype opgehaald,
+              bijv. Point, Polygon of LineString.
+            </span>
+          </span>
+        </label>
+        <input type="url" id="url_api" name="url_api"
+               placeholder="https://api.data.amsterdam.nl/v1/water/v1/binnenwater"
+               autocomplete="off"/>
+      </div>
+
+    </div>
+
+    <!-- ── Ophalen knop ──────────────────────────── -->
+    <div style="margin-top:24px;">
+      <button id="btn-fetch" class="btn btn-primary" onclick="fetchData()">
+        <span id="fetch-label">Gegevens ophalen</span>
+        <span class="spinner" id="fetch-spinner"></span>
+      </button>
+    </div>
+
+    <!-- ── Resultaat panel ───────────────────────── -->
+    <div class="result-panel" id="result-panel">
+      <h4>Opgehaalde gegevens</h4>
+      <div id="result-rows"></div>
+    </div>
+
+    <div id="error-msg" class="error-msg" style="display:none;"></div>
+
+    <!-- ── Navigatie ────────────────────────────── -->
+    <div class="btn-row">
+      <a href="/" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Vorige
+      </a>
+      <button id="btn-next" class="btn btn-primary" onclick="goNext()" disabled
+              style="opacity:.4; cursor:not-allowed;">
+        Volgende
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  /* ── Auth blokkering ─────────────────────────── */
+  .auth-block {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .auth-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  .auth-tekst { flex: 1; }
+  .auth-tekst strong {
+    display: block;
+    font-size: 14px;
+    color: var(--red);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .auth-details {
+    background: #fff;
+    border: 1px solid #f5c0c0;
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .auth-row {
+    display: flex;
+    gap: 12px;
+    padding: 8px 14px;
+    border-bottom: 1px solid #fde8e8;
+    font-size: 13px;
+    align-items: flex-start;
+  }
+  .auth-row:last-child { border-bottom: none; }
+  .auth-key {
+    font-weight: 700;
+    color: var(--ink-2);
+    min-width: 100px;
+    flex-shrink: 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding-top: 1px;
+  }
+  .auth-val { color: var(--ink); font-family: var(--font-mono); font-size: 12px; }
+  .auth-badge {
+    background: #ffe0e0;
+    color: var(--red);
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+  }
+  .auth-list {
+    margin: 0;
+    padding-left: 16px;
+    font-family: var(--font-body);
+    font-size: 12.5px;
+    color: var(--ink-2);
+    line-height: 1.6;
+  }
+</style>
+<script>
+  // Stap 1 gegevens herstellen
+  const step1 = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
+
+  // Opgeslagen URLs terugzetten (bij terugnavigatie)
+  const step2 = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
+  if (step2.url_dataset) document.getElementById('url_dataset').value = step2.url_dataset;
+  if (step2.url_tabel)   document.getElementById('url_tabel').value   = step2.url_tabel;
+  if (step2.url_api)     document.getElementById('url_api').value     = step2.url_api;
+
+  // ── Gegevens ophalen ────────────────────────────
+  async function fetchData() {
+    const url_dataset = document.getElementById('url_dataset').value.trim();
+    const url_tabel   = document.getElementById('url_tabel').value.trim();
+    const url_api     = document.getElementById('url_api').value.trim();
+
+    // Validatie
+    const errEl = document.getElementById('error-msg');
+    errEl.style.display = 'none';
+
+    if (!url_dataset || !url_tabel || !url_api) {
+      errEl.textContent = 'Vul alle drie URL-velden in voordat u gegevens ophaalt.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    // UI: laden
+    document.getElementById('fetch-label').textContent = 'Bezig met ophalen…';
+    document.getElementById('fetch-spinner').style.display = 'block';
+    document.getElementById('btn-fetch').disabled = true;
+    document.getElementById('result-panel').classList.remove('visible');
+
+    try {
+      const resp = await fetch('/api/fetch-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url_dataset, url_tabel, url_api })
+      });
+
+      const data = await resp.json();
+
+      // ── Auth-blokkering: dataset / tabel / attribuut niet openbaar ───
+      if (data.auth_error) {
+        const niveauLabels = {
+          dataset:   'Dataset',
+          tabel:     'Tabel',
+          attribuut: 'Kolom',
+        };
+        const redenen = (data.auth_reden || []).map(r => `<li>${r}</li>`).join('');
+        const kolomRegel = data.auth_kolom
+          ? `<div class="auth-row"><span class="auth-key">Kolom</span><span class="auth-val">${data.auth_kolom}</span></div>`
+          : '';
+
+        errEl.innerHTML = `
+          <div class="auth-block">
+            <div class="auth-icon">⛔</div>
+            <div class="auth-tekst">
+              <strong>${data.auth_melding}</strong>
+              <div class="auth-details">
+                ${kolomRegel}
+                <div class="auth-row">
+                  <span class="auth-key">Autorisatie</span>
+                  <span class="auth-val auth-badge">${data.auth_waarde}</span>
+                </div>
+                ${redenen ? `<div class="auth-row"><span class="auth-key">Reden</span><span class="auth-val"><ul class="auth-list">${redenen}</ul></span></div>` : ''}
+              </div>
+            </div>
+          </div>`;
+        errEl.style.display = 'block';
+        return; // Stop hier — gebruiker kan niet verder
+      }
+
+      // ── Algemene API-fouten ──────────────────────────────────────────
+      if (data.error) {
+        errEl.innerHTML = `<strong>Fout bij ophalen:</strong><br>${data.error}`;
+        errEl.style.display = 'block';
+      }
+
+      // ── Resultaten tonen ─────────────────────────────────────────────
+      const rows = [
+        { key: 'Team',            val: data.publisher    || '—' },
+        { key: 'Tabel naam',      val: data.table_name   || '—' },
+        { key: 'Geometrie kolom', val: data.mainGeometry || '—' },
+        { key: 'Geometrietype',   val: data.geometryType || '—' },
+        { key: 'Uniek ID veld',   val: data.unique_id    || '—' },
+        { key: 'Autorisatie',     val: data.auth         || '—' },
+      ];
+
+      const container = document.getElementById('result-rows');
+      container.innerHTML = rows.map(r => `
+        <div class="result-row">
+          <span class="result-key">${r.key}</span>
+          <span class="result-val">${r.val}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('result-panel').classList.add('visible');
+
+      // Sla alles op — keys matchen wat app.py teruggeeft
+      const step2data = {
+        url_dataset, url_tabel, url_api,
+        table_name:   data.table_name   || '',
+        publisher:    data.publisher    || '',
+        auth:         data.auth         || '',
+        description:  data.description  || '',
+        mainGeometry: data.mainGeometry || 'geometrie',
+        geometryType: data.geometryType || 'POLYGON',
+        unique_id:    data.unique_id    || 'id',
+      };
+      sessionStorage.setItem('wms_step2', JSON.stringify(step2data));
+
+      // Volgende knop activeren
+      const btnNext = document.getElementById('btn-next');
+      btnNext.disabled = false;
+      btnNext.style.opacity = '1';
+      btnNext.style.cursor  = 'pointer';
+
+    } catch (err) {
+      errEl.textContent = 'Netwerkfout: ' + err.message;
+      errEl.style.display = 'block';
+    } finally {
+      document.getElementById('fetch-label').textContent = 'Gegevens ophalen';
+      document.getElementById('fetch-spinner').style.display = 'none';
+      document.getElementById('btn-fetch').disabled = false;
+    }
+  }
+
+  function goNext() {
+    window.location.href = '/scenario3';
+  }
+</script>
+{% endblock %}

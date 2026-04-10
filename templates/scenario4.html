@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step done"><span class="step-num">✓</span> Stap 1 · Basisgegevens</div>
+  <span class="step-arrow">›</span>
+  <div class="step done"><span class="step-num">✓</span> Stap 2 · Externe bronnen</div>
+  <span class="step-arrow">›</span>
+  <div class="step done"><span class="step-num">✓</span> Stap 3 · Filter</div>
+  <span class="step-arrow">›</span>
+  <div class="step active" id="stepper-4"><span class="step-num">4</span> Stap 4 · Genereer</div>
+  <span class="step-arrow">›</span>
+  <div class="step" id="stepper-5"><span class="step-num">5</span> Stap 5 · Download</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+
+<div class="card" id="card-genereer">
+  <div class="card-header">
+    <h2>MapFile genereren</h2>
+    <p class="subtitle">
+      Controleer hieronder de samenvatting van alle ingevoerde gegevens.
+      Klik daarna op <strong>Creëer WMS</strong> om de MapFile te genereren.
+    </p>
+  </div>
+
+  <div class="card-body">
+    <div class="section-label">Samenvatting</div>
+    <div class="summary-grid" id="summary-grid">
+      </div>
+
+    <div class="btn-row">
+      <a href="/scenario3" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Vorige
+      </a>
+      <button class="btn btn-primary" id="btn-genereer" onclick="genereerMapfile()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="genereer-label">Creëer WMS</span>
+        <span class="spinner" id="genereer-spinner"></span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="card-resultaat" style="display:none; margin-top:24px;">
+  <div class="card-header">
+    <h2>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style="vertical-align:-3px;margin-right:6px">
+        <circle cx="10" cy="10" r="9" stroke="#007A3D" stroke-width="2"/>
+        <path d="M6 10l3 3 5-5" stroke="#007A3D" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      MapFile gegenereerd
+    </h2>
+    <p class="subtitle">Uw MapFile is klaar. U kunt hem hieronder bekijken en downloaden.</p>
+  </div>
+
+  <div class="card-body">
+    <div class="section-label">Gegenereerde MapFile</div>
+    <pre class="mapfile-output" id="mapfile-output"></pre>
+
+    <div class="btn-row" style="flex-wrap:wrap; gap:10px;">
+      <button class="btn btn-ghost" onclick="nieuweWMS()" style="margin-right:auto;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M2 8a6 6 0 1 1 1.5 4" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round"/>
+          <path d="M2 12V8h4" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Maak een nieuwe WMS
+      </button>
+      <a href="/scenario3" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Vorige
+      </a>
+      <button class="btn btn-primary" id="btn-download" onclick="downloadMapfile()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Downloaden
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  /* Styling voor de samenvatting en output */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .summary-cell { background: var(--white); padding: 10px 16px; display: flex; flex-direction: column; gap: 3px; }
+  .summary-cell.header-cell { background: var(--surface); grid-column: 1 / -1; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--ink-3); }
+  .summary-key { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ink-3); }
+  .summary-val { font-size: 14px; color: var(--ink); font-family: var(--font-mono); }
+  .mapfile-output {
+    font-family: var(--font-mono); font-size: 12.5px; background: #0f1117; color: #c9d1d9;
+    border-radius: var(--radius); padding: 20px 24px; overflow-x: auto; white-space: pre;
+    line-height: 1.75; max-height: 500px; overflow-y: auto; border: 1px solid #30363d;
+  }
+  .mapfile-output .kw  { color: #ff7b72; font-weight: bold; }   /* Keywords */
+  .mapfile-output .str { color: #a5d6ff; }   /* Strings */
+  .mapfile-output .key { color: #79c0ff; }   /* Parameters */
+  .mapfile-output .cmt { color: #8b949e; font-style: italic; } /* Comments */
+  .btn-ghost { background: transparent; color: var(--ink-3); border: 1.5px solid var(--border); }
+</style>
+
+<script>
+  const step1 = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
+  const step2 = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
+  const step3 = JSON.parse(sessionStorage.getItem('wms_step3') || '{}');
+
+  function renderSummary() {
+    // Kleur swatch HTML voor samenvatting
+    const kleurHtml = step3.color
+      ? `<span style="display:inline-flex;align-items:center;gap:8px;">
+           <span style="width:18px;height:18px;border-radius:4px;background:${step3.color};border:1px solid rgba(0,0,0,.15);display:inline-block;"></span>
+           ${step3.color}
+         </span>`
+      : '—';
+
+    const rows = [
+      { section: 'Stap 1 · Basisgegevens' },
+      { key: 'MapFile naam',    val: step1.mapfile_naam   },
+      { key: 'WMS Groepsnaam', val: step1.wms_groepsnaam  },
+      { key: 'WMS Laagnaam',   val: step1.wms_laagnaam    },
+      { section: 'Stap 2 · Externe bronnen' },
+      { key: 'Team',             val: step2.publisher    },
+      { key: 'Tabel naam',       val: step2.table_name   },
+      { key: 'Geometrie kolom',  val: step2.mainGeometry },
+      { key: 'Geometrietype',    val: step2.geometryType },
+      { key: 'Uniek ID veld',    val: step2.unique_id    },
+      { section: 'Stap 3 · Filter & Kleur' },
+      { key: 'Filter actief', val: step3.filter_aan ? 'Ja' : 'Nee' },
+      { key: 'Kleur',         val: kleurHtml, raw: true },
+    ];
+    const grid = document.getElementById('summary-grid');
+    grid.innerHTML = rows.map(r => r.section ? `<div class="summary-cell header-cell">${r.section}</div>` : `
+        <div class="summary-cell"><span class="summary-key">${r.key}</span><span class="summary-val">${r.raw ? r.val : (r.val || '—')}</span></div>`).join('');
+  }
+  renderSummary();
+
+  let mapfileContent = '';
+
+  async function genereerMapfile() {
+    document.getElementById('genereer-label').textContent = 'Bezig…';
+    document.getElementById('genereer-spinner').style.display = 'block';
+    document.getElementById('btn-genereer').disabled = true;
+
+    const payload = { ...step1, ...step2, color: step3.color || '', filter_kolom: step3.filter_aan ? step3.filter_kolom : '', filter_waarde: step3.filter_aan ? step3.filter_waarde : '' };
+
+    try {
+      const resp = await fetch('/api/generate-mapfile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await resp.json();
+      mapfileContent = data.mapfile || '';
+
+      // Syntax Highlighting
+      function escapeHtml(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+      let h = escapeHtml(mapfileContent);
+
+      // VOLGORDE IS CRUCIAAL:
+      h = h.replace(/"([^"]*)"/g, '"<span class="str">$1</span>"'); // 1. Strings
+      h = h.replace(/^(\s*)(NAME|GROUP|DATA|TYPE|TEMPLATE|INCLUDE|COLOR|OPACITY|OUTLINECOLOR|WIDTH|ANTIALIAS|AUTH|CONNECTIONTYPE|CONNECTION)\b/gm, '$1<span class="key">$2</span>'); // 2. Keys
+      h = h.replace(/(#[^\n]+)/g, '<span class="cmt">$1</span>'); // 3. Comments
+      h = h.replace(/^(\s*)(MAP|END|LAYER|CLASS|STYLE|WEB|METADATA|PROJECTION)\b/gm, '$1<span class="kw">$2</span>'); // 4. Keywords laatst
+
+      document.getElementById('mapfile-output').innerHTML = h;
+      document.getElementById('card-resultaat').style.display = 'block';
+      document.getElementById('stepper-4').className = 'step done';
+      document.getElementById('stepper-5').className = 'step active';
+      document.getElementById('card-resultaat').scrollIntoView({ behavior: 'smooth' });
+
+    } catch (err) {
+      alert('Fout: ' + err.message);
+    } finally {
+      document.getElementById('genereer-label').textContent = 'Creëer WMS';
+      document.getElementById('genereer-spinner').style.display = 'none';
+      document.getElementById('btn-genereer').disabled = false;
+    }
+  }
+
+  function downloadMapfile() {
+    if (!mapfileContent) return;
+    const blob = new Blob([mapfileContent], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (step1.mapfile_naam || 'mapfile') + '.map';
+    a.click();
+  }
+
+  function nieuweWMS() {
+    sessionStorage.clear();
+    window.location.href = '/';
+  }
+</script>
+{% endblock %}

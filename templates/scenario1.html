@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step active"><span class="step-num">1</span> Stap 1 · Basisgegevens</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">2</span> Stap 2 · Externe bronnen</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">3</span> Stap 3 · Filter &amp; Kleur</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">4</span> Stap 4 · Genereer</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">5</span> Stap 5 · Download</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Self-Service WMS</h2>
+    <p class="subtitle">
+      Met Self-Service WMS kunt u met behulp van dit formulier een WMS maken.
+      Een WMS is nodig om de gewenste geografische data — bijvoorbeeld op
+      <a href="https://data.amsterdam.nl" target="_blank" style="color:var(--red)">data.amsterdam.nl</a> — te publiceren.
+    </p>
+
+    <div class="info-box">
+      <strong>Wat is een WMS?</strong>
+      Een <em>Web Map Service</em> (WMS) is een standaardprotocol voor het opvragen en weergeven van geografische
+      kaarten via het internet. Het levert kaartbeelden (PNG, JPEG of SVG) die gegenereerd worden op basis van
+      geografische data.
+    </div>
+  </div>
+
+  <div class="card-body">
+    <form id="form1" novalidate>
+
+      <div class="section-label">MapFile instellingen</div>
+
+      <div class="form-grid">
+
+        <div class="form-group">
+          <label>
+            MapFile naam <span class="req">*</span>
+            <span class="tooltip-icon">?
+              <span class="tooltip-text">
+                Dit is de MapFile naam die in de mapfile tegenover de variabele <strong>MAP NAME</strong> staat.
+              </span>
+            </span>
+          </label>
+          <input type="text" id="mapfile_naam" name="mapfile_naam"
+                 placeholder="bijv. water" required autocomplete="off"/>
+        </div>
+
+        <div class="form-group">
+          <label>
+            WMS Groepsnaam <span class="req">*</span>
+            <span class="tooltip-icon">?
+              <span class="tooltip-text">
+                Een groep is een verzameling van meerdere lagen die samen worden aangeboden.
+                Bijv. <strong>BAG</strong> kan een groepsnaam zijn.
+              </span>
+            </span>
+          </label>
+          <input type="text" id="wms_groepsnaam" name="wms_groepsnaam"
+                 placeholder="bijv. water" required autocomplete="off"/>
+        </div>
+
+        <div class="form-group full">
+          <label>
+            WMS Laagnaam <span class="req">*</span>
+            <span class="tooltip-icon">?
+              <span class="tooltip-text">
+                Een laag is een afzonderlijke dataset met geografische informatie, zoals wegen,
+                gebouwen of waterlichamen. Bijv. <strong>panden</strong> onder de groep BAG.
+              </span>
+            </span>
+          </label>
+          <input type="text" id="wms_laagnaam" name="wms_laagnaam"
+                 placeholder="bijv. binnenwater" required autocomplete="off"/>
+        </div>
+
+      </div>
+
+      <div class="btn-row">
+        <button type="submit" class="btn btn-primary">
+          Volgende
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Herstel opgeslagen waarden bij terugnavigatie
+  const saved = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
+  if (saved.mapfile_naam)   document.getElementById('mapfile_naam').value   = saved.mapfile_naam;
+  if (saved.wms_groepsnaam) document.getElementById('wms_groepsnaam').value = saved.wms_groepsnaam;
+  if (saved.wms_laagnaam)   document.getElementById('wms_laagnaam').value   = saved.wms_laagnaam;
+
+  document.getElementById('form1').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const fields = ['mapfile_naam', 'wms_groepsnaam', 'wms_laagnaam'];
+    let valid = true;
+
+    fields.forEach(id => {
+      const el = document.getElementById(id);
+      el.style.borderColor = '';
+      if (!el.value.trim()) {
+        el.style.borderColor = 'var(--red)';
+        valid = false;
+      }
+    });
+
+    if (!valid) {
+      alert('Vul alle verplichte velden in.');
+      return;
+    }
+
+    const data = {};
+    fields.forEach(id => { data[id] = document.getElementById(id).value.trim(); });
+    sessionStorage.setItem('wms_step1', JSON.stringify(data));
+    window.location.href = '/scenario2';
+  });
+</script>
+{% endblock %}
