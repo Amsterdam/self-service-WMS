@@ -20,9 +20,9 @@ Een simpele WMS voldoet aan de volgende kenmerken:
 ### Hoe werkt het?
 Volg de onderstaande stappen om aan de slag te gaan:
 1. Maak een lokale clone van deze repository:
-  ```
-git clone <repository-url>
- ``` 
+```
+git clone https://github.com/Amsterdam/self-service-WMS.git
+``` 
 2. Navigeer naar de lokale map van de repository in je terminal.
 3. Installeer de benodigde Python-pakketten:
 ``` 
