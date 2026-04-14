@@ -173,6 +173,48 @@ def fetch_data():
         print(f"ERROR: {str(e)}")
         return jsonify({"error": str(e)}), 400
 # ──────────────────────────────────────────────
+# API: Kolomnamen ophalen uit DSO API (voor label dropdown)
+# ──────────────────────────────────────────────
+
+@app.route("/api/fetch-columns", methods=["POST"])
+def fetch_columns():
+    try:
+        data    = request.json
+        url_api = data.get("url_api", "").strip()
+        if not url_api:
+            return jsonify({"error": "Geen API URL opgegeven"}), 400
+
+        dso_headers = {
+            "Accept": "application/hal+json, application/json;q=0.9, */*;q=0.8"
+        }
+        sep   = "&" if "?" in url_api else "?"
+        resp  = requests.get(url_api + sep + "_pageSize=1", headers=dso_headers, timeout=15)
+        resp.raise_for_status()
+        api_data = resp.json()
+
+        # Haal de eerste feature op uit _embedded of results
+        kolommen = []
+        embedded = api_data.get("_embedded", {})
+        candidates = list(embedded.values()) if embedded else [api_data.get("results", [])]
+        for items in candidates:
+            if isinstance(items, list) and items:
+                feature = items[0]
+                # Alle keys ophalen behalve interne HAL-links en geometrie
+                kolommen = [
+                    k for k in feature.keys()
+                    if not k.startswith("_")
+                    and k not in ("geometry", "geometrie", "type")
+                ]
+                break
+
+        return jsonify({"kolommen": kolommen})
+
+    except Exception as e:
+        print(f"ERROR fetch-columns: {str(e)}")
+        return jsonify({"error": str(e)}), 400
+
+
+# ──────────────────────────────────────────────
 # API: MapFile Genereren (Scenario 4)
 # ──────────────────────────────────────────────
 
@@ -200,6 +242,7 @@ def generate_mapfile():
     outline        = data.get("color", "#000000")
     filter_kolom   = data.get("filter_kolom", "")
     filter_waarde  = data.get("filter_waarde", "")
+    label_kolom    = data.get("label_kolom", "")
 
     # 2. DATA regel opbouwen — unique_id dynamisch uit stap 2
     unique_id = data.get("unique_id", "id")
@@ -210,7 +253,7 @@ def generate_mapfile():
         data_line = f'"{geo_column} FROM public.{table_name} USING UNIQUE {unique_id} USING SRID=28992"'
 
     # 3. MapFile Template (F-string)
-    is_polygon = (geo_type == "POLYGON")
+    is_polygon   = geo_type in ("POLYGON", "MULTIPOLYGON")
     opacity_line = "        OPACITY             20" if is_polygon else ""
 
     mapfile = f"""MAP
@@ -264,13 +307,12 @@ def generate_mapfile():
       TITLE                 "{layer_name.capitalize()}"
       STYLE
         ANTIALIAS           true
-        COLOR               "{color}"
-{opacity_line}
+        COLOR               "{color}"{"\n        OPACITY             20" if is_polygon else ""}
       END
       STYLE
         OUTLINECOLOR        "{outline}"
         WIDTH               2
-      END
+      END{"\n    LABEL\n      ANGLE         AUTO\n      COLOR         0 0 0\n      FONT          \"ubuntu\"\n      TYPE          truetype\n      SIZE          10\n      POSITION      AUTO\n      PARTIALS      FALSE\n      TEXT          (\"[" + label_kolom + "]\")" + "\n    END" if label_kolom else ""}
     END
   END
 

@@ -151,6 +151,7 @@
       { key: 'Uniek ID veld',    val: step2.unique_id    },
       { section: 'Stap 3 · Filter & Kleur' },
       { key: 'Filter actief', val: step3.filter_aan ? 'Ja' : 'Nee' },
+      { key: 'Label',         val: step3.label_aan ? (step3.label_kolom || '—') : 'Nee' },
       { key: 'Kleur',         val: kleurHtml, raw: true },
     ];
     const grid = document.getElementById('summary-grid');
@@ -166,7 +167,13 @@
     document.getElementById('genereer-spinner').style.display = 'block';
     document.getElementById('btn-genereer').disabled = true;
 
-    const payload = { ...step1, ...step2, color: step3.color || '', filter_kolom: step3.filter_aan ? step3.filter_kolom : '', filter_waarde: step3.filter_aan ? step3.filter_waarde : '' };
+    const payload = {
+      ...step1, ...step2,
+      color:         step3.color         || '',
+      filter_kolom:  step3.filter_aan    ? step3.filter_kolom  : '',
+      filter_waarde: step3.filter_aan    ? step3.filter_waarde : '',
+      label_kolom:   step3.label_aan     ? step3.label_kolom   : '',
+    };
 
     try {
       const resp = await fetch('/api/generate-mapfile', {
