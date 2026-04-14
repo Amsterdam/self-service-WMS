@@ -63,7 +63,7 @@ def is_openbaar(auth_val):
     return str(auth_val).upper() == "OPENBAAR"
 
 # ──────────────────────────────────────────────
-# API: Data ophalen (Met Inline SSRF Fix)
+# API: Data ophalen (Met SSRF & Exception Fix)
 # ──────────────────────────────────────────────
 
 @app.route("/api/fetch-data", methods=["POST"])
@@ -163,10 +163,12 @@ def fetch_data():
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        # CodeQL Fix: Information Exposure voorkomen
+        print(f"Error in fetch-data: {str(e)}")
+        return jsonify({"error": "Interne fout bij het ophalen van metadata."}), 500
 
 # ──────────────────────────────────────────────
-# API: Kolomnamen (Met Inline SSRF & Params Fix)
+# API: Kolomnamen (Met SSRF & Params & Exception Fix)
 # ──────────────────────────────────────────────
 
 @app.route("/api/fetch-columns", methods=["POST"])
@@ -201,7 +203,9 @@ def fetch_columns():
         return jsonify({"kolommen": kolommen})
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        # CodeQL Fix: Information Exposure voorkomen
+        print(f"Error in fetch-columns: {str(e)}")
+        return jsonify({"error": "Interne fout bij het ophalen van kolommen."}), 500
 
 # ──────────────────────────────────────────────
 # API: MapFile Genereren
@@ -209,27 +213,27 @@ def fetch_columns():
 
 @app.route("/api/generate-mapfile", methods=["POST"])
 def generate_mapfile():
-    data = request.json
-    # ... (Onveranderd, aangezien hier geen externe requests worden gedaan) ...
-    p = data.get("publisher", "Team Datamanagement")
-    gn = data.get("wms_groepsnaam", "mijn_groep")
-    ln = data.get("wms_laagnaam", "mijn_laag")
-    desc = data.get("description", "")
-    auth = data.get("auth", "openbaar")
-    tn = data.get("table_name", "tabel_onbekend").replace("public.", "")
-    gc = data.get("mainGeometry", "geometrie")
-    gt = data.get("geometryType", "POLYGON").upper()
-    col = data.get("color", "#000000")
-    uid = data.get("unique_id", "id")
-    lbl = data.get("label_kolom", "")
+    try:
+        data = request.json
+        p = data.get("publisher", "Team Datamanagement")
+        gn = data.get("wms_groepsnaam", "mijn_groep")
+        ln = data.get("wms_laagnaam", "mijn_laag")
+        desc = data.get("description", "")
+        auth = data.get("auth", "openbaar")
+        tn = data.get("table_name", "tabel_onbekend").replace("public.", "")
+        gc = data.get("mainGeometry", "geometrie")
+        gt = data.get("geometryType", "POLYGON").upper()
+        col = data.get("color", "#000000")
+        uid = data.get("unique_id", "id")
+        lbl = data.get("label_kolom", "")
 
-    data_line = f'"{gc} FROM public.{tn} USING UNIQUE {uid} USING SRID=28992"'
-    if data.get("filter_kolom") and data.get("filter_waarde"):
-        data_line = f'"{gc} FROM public.{tn} USING UNIQUE {uid} USING SRID=28992 WHERE {data["filter_kolom"]} = \'{data["filter_waarde"]}\'"'
+        data_line = f'"{gc} FROM public.{tn} USING UNIQUE {uid} USING SRID=28992"'
+        if data.get("filter_kolom") and data.get("filter_waarde"):
+            data_line = f'"{gc} FROM public.{tn} USING UNIQUE {uid} USING SRID=28992 WHERE {data["filter_kolom"]} = \'{data["filter_waarde"]}\'"'
 
-    is_poly = gt in ("POLYGON", "MULTIPOLYGON")
-    
-    mapfile = f"""MAP
+        is_poly = gt in ("POLYGON", "MULTIPOLYGON")
+        
+        mapfile = f"""MAP
   NAME "{ln}"
   STATUS ON
   EXTENT -7000 289000 300000 629000
@@ -267,7 +271,11 @@ def generate_mapfile():
     END
   END
 END"""
-    return jsonify({"mapfile": mapfile.lstrip()})
+        return jsonify({"mapfile": mapfile.lstrip()})
+    except Exception as e:
+        print(f"Error in generate-mapfile: {str(e)}")
+        return jsonify({"error": "Fout bij genereren MapFile."}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # CodeQL Fix: Debug naar False voor security scans
+    app.run(debug=False, port=5000)
