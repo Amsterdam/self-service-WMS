@@ -2,9 +2,35 @@ import re
 from flask import Flask, render_template, request, jsonify, session
 import requests
 import json
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 app.secret_key = "wms-secret-key-2024"
+
+# ──────────────────────────────────────────────
+# Beveiliging: SSRF Allowlist
+# ──────────────────────────────────────────────
+# Alleen URL's van deze domeinen worden geaccepteerd door de server.
+ALLOWED_DOMAINS = [
+    "github.com", 
+    "raw.githubusercontent.com", 
+    "api.data.amsterdam.nl", 
+    "data.amsterdam.nl"
+]
+
+def validate_url(url):
+    """
+    Controleert of de URL veilig is om aan te roepen vanaf de server.
+    Voorkomt Server-Side Request Forgery (SSRF).
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+        # Check of het protocol http(s) is en of het domein in onze lijst staat
+        return parsed.scheme in ('http', 'https') and parsed.netloc in ALLOWED_DOMAINS
+    except Exception:
+        return False
 
 # ──────────────────────────────────────────────
 # Routes
@@ -27,8 +53,9 @@ def scenario4():
     return render_template("scenario4.html")
 
 # ──────────────────────────────────────────────
-# Hulpfunctie: GitHub blob -> raw URL
+# Hulpfuncties
 # ──────────────────────────────────────────────
+
 def to_raw_url(url):
     url = url.strip()
     match = re.match(r"https?://github\.com/([^/]+/[^/]+)/blob/(.+)", url)
@@ -43,12 +70,13 @@ def to_snake_case(name):
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
-# --- De API Route ---
-
 def is_openbaar(auth_val):
     """Geeft True terug als de auth waarde openbaar is."""
     return str(auth_val).upper() == "OPENBAAR"
 
+# ──────────────────────────────────────────────
+# API: Data ophalen (Stap 1 & 2)
+# ──────────────────────────────────────────────
 
 @app.route("/api/fetch-data", methods=["POST"])
 def fetch_data():
@@ -57,33 +85,38 @@ def fetch_data():
         url_dataset = to_raw_url(data.get("url_dataset", ""))
         url_tabel   = to_raw_url(data.get("url_tabel", ""))
 
+        # --- SSRF VALIDATIE ---
+        if not validate_url(url_dataset) or not validate_url(url_tabel):
+            return jsonify({
+                "error": "Onveilige URL gedetecteerd. Alleen Amsterdam.nl en GitHub domeinen zijn toegestaan."
+            }), 403
+
         # ── 1. Dataset metadata ───────────────────────────────────────────
         resp_ds = requests.get(url_dataset, timeout=10)
+        resp_ds.raise_for_status()
         ds_json = resp_ds.json()
 
         raw_publisher = ds_json.get("publisher", "/publishers/onbekend")
         if isinstance(raw_publisher, dict):
             raw_publisher = raw_publisher.get("$ref", "/publishers/onbekend")
+        
         team_name   = raw_publisher.split("/")[-1]
         dataset_id  = ds_json.get("id", "dataset")
         description = ds_json.get("description", "")
         ds_auth     = ds_json.get("auth", "OPENBAAR")
 
-        # Check 1: dataset niet openbaar
         if not is_openbaar(ds_auth):
             return jsonify({
                 "auth_error": True,
                 "auth_niveau": "dataset",
-                "auth_melding": (
-                    "Deze dataset is niet openbaar beschikbaar. "
-                    "De Self-Service WMS kan alleen WMS-lagen aanmaken voor openbare datasets."
-                ),
+                "auth_melding": "Deze dataset is niet openbaar beschikbaar.",
                 "auth_waarde":  ds_auth,
                 "auth_reden":   ds_json.get("reasonsNonPublic", []),
             })
 
         # ── 2. Tabel metadata ─────────────────────────────────────────────
         resp_tab = requests.get(url_tabel, timeout=10)
+        resp_tab.raise_for_status()
         tab_json = resp_tab.json()
 
         tabel_id      = tab_json.get("id", "tabel")
@@ -91,15 +124,11 @@ def fetch_data():
         major_version = version_raw.split(".")[0]
         tab_auth      = tab_json.get("auth", "OPENBAAR")
 
-        # Check 2: tabel niet openbaar
         if not is_openbaar(tab_auth):
             return jsonify({
                 "auth_error": True,
                 "auth_niveau": "tabel",
-                "auth_melding": (
-                    "Deze tabel is niet openbaar beschikbaar. "
-                    "De Self-Service WMS kan alleen WMS-lagen aanmaken voor openbare tabellen."
-                ),
+                "auth_melding": "Deze tabel is niet openbaar beschikbaar.",
                 "auth_waarde":  tab_auth,
                 "auth_reden":   tab_json.get("reasonsNonPublic", []),
             })
@@ -111,13 +140,13 @@ def fetch_data():
 
         # ── 4. Geometrie ──────────────────────────────────────────────────
         schema_obj = tab_json.get("schema", {})
-        main_geo   = schema_obj.get("mainGeometry",
-                     tab_json.get("mainGeometry", "geometrie"))
+        main_geo   = schema_obj.get("mainGeometry", tab_json.get("mainGeometry", "geometrie"))
 
         geo_type = "POLYGON"
         props     = schema_obj.get("properties", {})
         geom_prop = props.get(main_geo, {})
-        format_val = geom_prop.get("$ref", geom_prop.get("format", "")).lower()
+        format_val = str(geom_prop.get("$ref", geom_prop.get("format", ""))).lower()
+        
         if "point" in format_val:
             geo_type = "POINT"
         elif "multipolygon" in format_val:
@@ -128,7 +157,6 @@ def fetch_data():
             geo_type = "LINESTRING"
 
         # ── 5. Check 3: attribuut-niveau auth ────────────────────────────
-        # Loop door alle properties en zoek het eerste niet-openbare attribuut
         niet_openbaar_attribuut = None
         for attr_naam, attr_def in props.items():
             attr_auth = attr_def.get("auth", "OPENBAAR")
@@ -138,24 +166,18 @@ def fetch_data():
                     "auth":   attr_auth,
                     "reden":  attr_def.get("reasonsNonPublic", []),
                 }
-                break  # Eerste gevonden is genoeg
+                break
 
         if niet_openbaar_attribuut:
             return jsonify({
                 "auth_error": True,
                 "auth_niveau": "attribuut",
-                "auth_melding": (
-                    f"De tabel bevat één of meer kolommen die niet openbaar zijn "
-                    f"(bijv. '{niet_openbaar_attribuut['naam']}'). "
-                    "De Self-Service WMS kan geen WMS-laag aanmaken voor tabellen met "
-                    "niet-openbare kolommen."
-                ),
+                "auth_melding": f"De tabel bevat niet-openbare kolom: '{niet_openbaar_attribuut['naam']}'.",
                 "auth_waarde":  niet_openbaar_attribuut["auth"],
                 "auth_reden":   niet_openbaar_attribuut["reden"],
                 "auth_kolom":   niet_openbaar_attribuut["naam"],
             })
 
-        # ── 6. Uniek ID veld ──────────────────────────────────────────────
         required  = schema_obj.get("required", [])
         unique_id = next((r for r in required if r != "schema"), "id")
 
@@ -172,8 +194,9 @@ def fetch_data():
     except Exception as e:
         print(f"ERROR: {str(e)}")
         return jsonify({"error": str(e)}), 400
+
 # ──────────────────────────────────────────────
-# API: Kolomnamen ophalen uit DSO API (voor label dropdown)
+# API: Kolomnamen ophalen
 # ──────────────────────────────────────────────
 
 @app.route("/api/fetch-columns", methods=["POST"])
@@ -181,8 +204,13 @@ def fetch_columns():
     try:
         data    = request.json
         url_api = data.get("url_api", "").strip()
+        
         if not url_api:
             return jsonify({"error": "Geen API URL opgegeven"}), 400
+
+        # --- SSRF VALIDATIE ---
+        if not validate_url(url_api):
+            return jsonify({"error": "Onveilige API URL gedetecteerd."}), 403
 
         dso_headers = {
             "Accept": "application/hal+json, application/json;q=0.9, */*;q=0.8"
@@ -192,14 +220,12 @@ def fetch_columns():
         resp.raise_for_status()
         api_data = resp.json()
 
-        # Haal de eerste feature op uit _embedded of results
         kolommen = []
         embedded = api_data.get("_embedded", {})
         candidates = list(embedded.values()) if embedded else [api_data.get("results", [])]
         for items in candidates:
             if isinstance(items, list) and items:
                 feature = items[0]
-                # Alle keys ophalen behalve interne HAL-links en geometrie
                 kolommen = [
                     k for k in feature.keys()
                     if not k.startswith("_")
@@ -215,21 +241,19 @@ def fetch_columns():
 
 
 # ──────────────────────────────────────────────
-# API: MapFile Genereren (Scenario 4)
+# API: MapFile Genereren
 # ──────────────────────────────────────────────
 
 @app.route("/api/generate-mapfile", methods=["POST"])
 def generate_mapfile():
     data = request.json
 
-    # 1. Basisvariabelen ophalen
     publisher      = data.get("publisher", "Team Datamanagement")
     group_name     = data.get("wms_groepsnaam", "mijn_groep")
     layer_name     = data.get("wms_laagnaam", "mijn_laag")
     description    = data.get("description", "")
     auth           = data.get("auth", "openbaar")
     
-    # Tabelnaam opschonen: verwijder 'public.' als het er staat voor weergave in de samenvatting
     raw_table_name = data.get("table_name", "tabel_onbekend")
     table_name     = raw_table_name.replace("public.", "")
     
@@ -237,36 +261,32 @@ def generate_mapfile():
     geo_type       = data.get("geometryType", "POLYGON").upper()
     gml_geo        = "multipolygon" if geo_type == "POLYGON" else "point"
     
-    # Kleur en filter (color wordt in scenario3.html gezet als 'color')
     color          = data.get("color", "#000000")
     outline        = data.get("color", "#000000")
     filter_kolom   = data.get("filter_kolom", "")
     filter_waarde  = data.get("filter_waarde", "")
     label_kolom    = data.get("label_kolom", "")
-
-    # 2. DATA regel opbouwen — unique_id dynamisch uit stap 2
-    unique_id = data.get("unique_id", "id")
+    unique_id      = data.get("unique_id", "id")
 
     if filter_kolom and filter_waarde:
         data_line = f'"{geo_column} FROM public.{table_name} USING UNIQUE {unique_id} USING SRID=28992 WHERE {filter_kolom} = \'{filter_waarde}\'"'
     else:
         data_line = f'"{geo_column} FROM public.{table_name} USING UNIQUE {unique_id} USING SRID=28992"'
 
-    # 3. MapFile Template (F-string)
     is_polygon   = geo_type in ("POLYGON", "MULTIPOLYGON")
-    opacity_line = "        OPACITY             20" if is_polygon else ""
-
+    
+    # Mapfile string opbouw
     mapfile = f"""MAP
-  NAME                      "{layer_name}"
-  STATUS                    ON
-  SIZE                      800 600
-  EXTENT                    -7000 289000 300000 629000
-  UNITS                     METERS
-  SHAPEPATH                 "../data"
-  IMAGECOLOR                255 255 255
+  NAME                     "{layer_name}"
+  STATUS                   ON
+  SIZE                     800 600
+  EXTENT                   -7000 289000 300000 629000
+  UNITS                    METERS
+  SHAPEPATH                "../data"
+  IMAGECOLOR               255 255 255
   CONFIG "MS_ERRORFILE"     "/tmp/mapserver.log"
 
-  INCLUDE                   "header.inc"
+  INCLUDE                  "header.inc"
 
   WEB
     METADATA
@@ -276,8 +296,6 @@ def generate_mapfile():
       "auth"                "{auth}"
     END
   END
-
-  #==============================================================================================
 
   LAYER
     NAME                    "{layer_name}"
@@ -318,7 +336,6 @@ def generate_mapfile():
 
 END"""
 
-    # .lstrip() verwijdert eventuele witruimte aan het begin voor een schone MapFile
     return jsonify({"mapfile": mapfile.lstrip()})
 
 if __name__ == "__main__":
