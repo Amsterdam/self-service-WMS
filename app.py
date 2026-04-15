@@ -23,21 +23,55 @@ ALLOWED_DOMAINS = {
     "api.data.amsterdam.nl",        # DSO API
 }
 
-def validate_url(url: str) -> str:
+# def validate_url(url: str) -> str:
+#     """
+#     Valideert dat de URL naar een toegestaan domein wijst.
+#     """
+#     url = url.strip()
+#     if not url:
+#         raise ValueError("Lege URL opgegeven.")
+#     parsed = urlparse(url)
+#     if parsed.scheme not in ("http", "https"):
+#         raise ValueError(f"Ongeldig URL-schema: {parsed.scheme!r}. Alleen http/https toegestaan.")
+#     domain = parsed.netloc.lower()
+#     domain = domain.split(":")[0]
+#     if domain not in ALLOWED_DOMAINS:
+#         raise ValueError(f"Domein '{domain}' is niet toegestaan.")
+#     return url
+# Verwijder validate_url en vervang door:
+
+GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
+DSO_API_BASE    = "https://api.data.amsterdam.nl"
+
+def extract_github_path(url: str) -> str:
     """
-    Valideert dat de URL naar een toegestaan domein wijst.
+    Trekt het pad uit een GitHub blob of raw URL en geeft een veilige
+    raw.githubusercontent.com URL terug met hardcoded base.
     """
     url = url.strip()
-    if not url:
-        raise ValueError("Lege URL opgegeven.")
+    # GitHub blob → raw pad
+    match = re.match(r"https?://github\.com/([^/]+/[^/]+)/blob/(.+)", url)
+    if match:
+        return f"{GITHUB_RAW_BASE}/{match.group(1)}/{match.group(2)}"
+    # Al een raw URL — extraheer alleen het pad
     parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError(f"Ongeldig URL-schema: {parsed.scheme!r}. Alleen http/https toegestaan.")
-    domain = parsed.netloc.lower()
-    domain = domain.split(":")[0]
-    if domain not in ALLOWED_DOMAINS:
-        raise ValueError(f"Domein '{domain}' is niet toegestaan.")
-    return url
+    if parsed.netloc == "raw.githubusercontent.com":
+        return f"{GITHUB_RAW_BASE}{parsed.path}"
+    raise ValueError(f"Ongeldige GitHub URL. Verwacht: github.com of raw.githubusercontent.com")
+
+def extract_dso_path(url: str) -> str:
+    """
+    Trekt het pad uit een DSO API URL en geeft een veilige
+    api.data.amsterdam.nl URL terug met hardcoded base.
+    """
+    url = url.strip()
+    parsed = urlparse(url)
+    if parsed.netloc not in ("api.data.amsterdam.nl", ""):
+        raise ValueError(f"Ongeldige DSO API URL. Verwacht: api.data.amsterdam.nl")
+    path = parsed.path
+    if not path.startswith("/v1/"):
+        raise ValueError("DSO API pad moet beginnen met /v1/")
+    return f"{DSO_API_BASE}{path}"
 
 app = Flask(__name__)
 app.secret_key = "wms-secret-key-2024"
@@ -82,8 +116,10 @@ def fetch_data():
     try:
         data = request.json
         # Directe validatie van de variabelen die in requests.get gaan
-        url_dataset = validate_url(to_raw_url(data.get("url_dataset", "")))
-        url_tabel   = validate_url(to_raw_url(data.get("url_tabel", "")))
+        # url_dataset = validate_url(to_raw_url(data.get("url_dataset", "")))
+        # url_tabel   = validate_url(to_raw_url(data.get("url_tabel", "")))
+        url_dataset = extract_github_path(data.get("url_dataset", ""))
+        url_tabel   = extract_github_path(data.get("url_tabel", ""))
 
         # ── 1. Dataset metadata ───────────────────────────────────────────
         resp_ds = requests.get(url_dataset, timeout=10)
@@ -180,13 +216,15 @@ def fetch_columns():
             return jsonify({"error": "Geen API URL opgegeven"}), 400
         
         # 1. Valideer de URL
-        url_api = validate_url(url_api_raw)
+        # url_api = validate_url(url_api_raw)
+        url_api = extract_dso_path(url_api_raw)
 
         # 2. FIX: Gebruik 'params' in plaats van handmatige string-concatenatie (+)
         # Dit lost de Critical Alert op regel 238 in de PDF op.
         dso_headers = {"Accept": "application/hal+json, application/json;q=0.9, */*;q=0.8"}
         query_params = {"_pageSize": "1"}
         
+        # resp = requests.get(url_api, headers=dso_headers, params=query_params, timeout=15)
         resp = requests.get(url_api, headers=dso_headers, params=query_params, timeout=15)
         resp.raise_for_status()
         api_data = resp.json()
