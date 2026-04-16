@@ -34,5 +34,3 @@ py app.py
 ```
 5. Volg de instructies die in de terminal verschijnen.
 
-Eens even kijken of dit allemaal wel werkt enzo.
-
