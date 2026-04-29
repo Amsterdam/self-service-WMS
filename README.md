@@ -15,8 +15,7 @@ Een simpele WMS voldoet aan de volgende kenmerken:
 - Geen verschillen in weergave op verschillende zoomniveaus.
 - Geen combinatie van verschillende laagtypen in één MapFile (bijvoorbeeld punten en polygonen, of gewichten en locaties).
 - Labels zijn eenvoudig en worden niet gegenereerd uit complexe queries.
-- De data waarvoor WMS wordt genereed, moet "openbaar" zijn. In het [Amsterdamse schema](https://github.com/Amsterdam/amsterdam-schema) de autorisatie op dataset, tabel en attribuut niveau gedefineerd. Alleen de autorisatie niveau **openbaar** wordt door deze tool geacepteerd.    
-
+- De data waarvoor een WMS wordt gegenereerd, moet "openbaar" zijn. In het [Amsterdamse schema](https://github.com/Amsterdam/amsterdam-schema) is de autorisatie gedefinieerd op dataset-, tabel- en attribuutniveau. Alleen data met het autorisatieniveau **openbaar** wordt door deze tool geaccepteerd.
 
 ### Hoe werkt het?
 Volg de onderstaande stappen om aan de slag te gaan:
