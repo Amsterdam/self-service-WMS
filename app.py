@@ -23,23 +23,6 @@ ALLOWED_DOMAINS = {
     "api.data.amsterdam.nl",        # DSO API
 }
 
-# def validate_url(url: str) -> str:
-#     """
-#     Valideert dat de URL naar een toegestaan domein wijst.
-#     """
-#     url = url.strip()
-#     if not url:
-#         raise ValueError("Lege URL opgegeven.")
-#     parsed = urlparse(url)
-#     if parsed.scheme not in ("http", "https"):
-#         raise ValueError(f"Ongeldig URL-schema: {parsed.scheme!r}. Alleen http/https toegestaan.")
-#     domain = parsed.netloc.lower()
-#     domain = domain.split(":")[0]
-#     if domain not in ALLOWED_DOMAINS:
-#         raise ValueError(f"Domein '{domain}' is niet toegestaan.")
-#     return url
-# Verwijder validate_url en vervang door:
-
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
 DSO_API_BASE    = "https://api.data.amsterdam.nl"
 
