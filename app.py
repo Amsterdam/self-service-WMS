@@ -92,13 +92,6 @@ def scenario3(): return render_template("scenario3.html")
 @app.route("/scenario4")
 def scenario4(): return render_template("scenario4.html")
 
-def to_raw_url(url):
-    url = url.strip()
-    match = re.match(r"https?://github\.com/([^/]+/[^/]+)/blob/(.+)", url)
-    if match:
-        return f"https://raw.githubusercontent.com/{match.group(1)}/{match.group(2)}"
-    return url
-
 def to_snake_case(name):
     if not name: return ""
     s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
