@@ -196,8 +196,11 @@ def fetch_data():
             "mainGeometry": main_geo, "geometryType": geo_type, "auth": ds_auth, "unique_id": unique_id,
         })
 
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+#    except ValueError as e:
+#        return jsonify({"error": str(e)}), 400
+    except ValueError:
+       logger.warning("Validatiefout: %s", traceback.format_exc())
+       return jsonify({"error": "Ongeldige invoer."}), 400
     except Exception:
         # Fix voor Information Exposure: Geen str(e) naar de gebruiker
         logger.error("Fout in fetch-data: %s", traceback.format_exc())
@@ -239,8 +242,11 @@ def fetch_columns():
 
         return jsonify({"kolommen": kolommen})
 
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+#    except ValueError as e:
+#        return jsonify({"error": str(e)}), 400
+    except ValueError:
+       logger.warning("Validatiefout: %s", traceback.format_exc())
+       return jsonify({"error": "Ongeldige invoer."}), 400
     except Exception:
         logger.error("Fout in fetch-columns: %s", traceback.format_exc())
         return jsonify({"error": "Fout bij ophalen van kolomnamen."}), 500
