@@ -23,23 +23,6 @@ ALLOWED_DOMAINS = {
     "api.data.amsterdam.nl",        # DSO API
 }
 
-# def validate_url(url: str) -> str:
-#     """
-#     Valideert dat de URL naar een toegestaan domein wijst.
-#     """
-#     url = url.strip()
-#     if not url:
-#         raise ValueError("Lege URL opgegeven.")
-#     parsed = urlparse(url)
-#     if parsed.scheme not in ("http", "https"):
-#         raise ValueError(f"Ongeldig URL-schema: {parsed.scheme!r}. Alleen http/https toegestaan.")
-#     domain = parsed.netloc.lower()
-#     domain = domain.split(":")[0]
-#     if domain not in ALLOWED_DOMAINS:
-#         raise ValueError(f"Domein '{domain}' is niet toegestaan.")
-#     return url
-# Verwijder validate_url en vervang door:
-
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
 DSO_API_BASE    = "https://api.data.amsterdam.nl"
 
@@ -91,13 +74,6 @@ def scenario3(): return render_template("scenario3.html")
 
 @app.route("/scenario4")
 def scenario4(): return render_template("scenario4.html")
-
-def to_raw_url(url):
-    url = url.strip()
-    match = re.match(r"https?://github\.com/([^/]+/[^/]+)/blob/(.+)", url)
-    if match:
-        return f"https://raw.githubusercontent.com/{match.group(1)}/{match.group(2)}"
-    return url
 
 def to_snake_case(name):
     if not name: return ""
@@ -196,8 +172,6 @@ def fetch_data():
             "mainGeometry": main_geo, "geometryType": geo_type, "auth": ds_auth, "unique_id": unique_id,
         })
 
-#    except ValueError as e:
-#        return jsonify({"error": str(e)}), 400
     except ValueError:
        logger.warning("Validatiefout: %s", traceback.format_exc())
        return jsonify({"error": "Ongeldige invoer."}), 400
@@ -227,7 +201,6 @@ def fetch_columns():
         dso_headers = {"Accept": "application/hal+json, application/json;q=0.9, */*;q=0.8"}
         query_params = {"_pageSize": "1"}
         
-        # resp = requests.get(url_api, headers=dso_headers, params=query_params, timeout=15)
         resp = requests.get(url_api, headers=dso_headers, params=query_params, timeout=15)
         resp.raise_for_status()
         api_data = resp.json()
