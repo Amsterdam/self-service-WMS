@@ -227,7 +227,6 @@ def fetch_columns():
         dso_headers = {"Accept": "application/hal+json, application/json;q=0.9, */*;q=0.8"}
         query_params = {"_pageSize": "1"}
         
-        # resp = requests.get(url_api, headers=dso_headers, params=query_params, timeout=15)
         resp = requests.get(url_api, headers=dso_headers, params=query_params, timeout=15)
         resp.raise_for_status()
         api_data = resp.json()
