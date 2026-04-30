@@ -196,8 +196,6 @@ def fetch_data():
             "mainGeometry": main_geo, "geometryType": geo_type, "auth": ds_auth, "unique_id": unique_id,
         })
 
-#    except ValueError as e:
-#        return jsonify({"error": str(e)}), 400
     except ValueError:
        logger.warning("Validatiefout: %s", traceback.format_exc())
        return jsonify({"error": "Ongeldige invoer."}), 400
