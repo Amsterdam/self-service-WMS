@@ -64,8 +64,21 @@
   </div>
 
   <div class="card-body">
-    <div class="section-label">Gegenereerde MapFile</div>
+    <div class="section-label">
+      Gegenereerde MapFile
+      <span id="laag-teller" style="
+        font-size:11px; font-weight:700; letter-spacing:.04em;
+        background:var(--step-done); color:white;
+        padding:2px 8px; border-radius:20px; margin-left:8px;
+      ">1 laag</span>
+    </div>
     <pre class="mapfile-output" id="mapfile-output"></pre>
+
+    <!-- ── Wijzig layer sectie ──────────────────── -->
+    <div id="wijzig-layer-sectie" style="display:none; margin-top:20px;">
+      <div class="section-label">Wijzig layer</div>
+      <div id="laag-knoppen" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+    </div>
 
     <div class="btn-row" style="flex-wrap:wrap; gap:10px;">
       <button class="btn btn-ghost" onclick="nieuweWMS()" style="margin-right:auto;">
@@ -77,13 +90,13 @@
         </svg>
         Maak een nieuwe WMS
       </button>
-      <a href="/scenario3" class="btn btn-secondary">
+      <button class="btn btn-add-layer" id="btn-add-layer" onclick="voegNieuweLaagToe()">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round"/>
         </svg>
-        Vorige
-      </a>
+        Voeg een nieuwe laag toe
+      </button>
       <button class="btn btn-primary" id="btn-download" onclick="downloadMapfile()">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" stroke-width="2"
@@ -122,14 +135,60 @@
   .mapfile-output .key { color: #79c0ff; }   /* Parameters */
   .mapfile-output .cmt { color: #8b949e; font-style: italic; } /* Comments */
   .btn-ghost { background: transparent; color: var(--ink-3); border: 1.5px solid var(--border); }
+  .btn-add-layer {
+    background: var(--step-done);
+    color: white;
+    border: none;
+  }
+  .btn-add-layer:hover { background: #005a2d; }
+
+  /* ── Laag-selectie knoppen ───────────────────── */
+  .btn-laag {
+    background: #004699;
+    color: white;
+    border: none;
+    height: 40px;
+    padding: 0 16px;
+    border-radius: var(--radius);
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-laag:hover   { background: #003070; }
+  .btn-laag:active  { transform: scale(.97); }
+  .btn-laag.bezig   { opacity: .6; cursor: wait; }
 </style>
 
 <script>
   const step1 = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
-  const step2 = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
-  const step3 = JSON.parse(sessionStorage.getItem('wms_step3') || '{}');
+  // step2 en step3 worden NIET hier ingelezen — dat gebeurt in renderSummary()
+  // zodat ze altijd de meest recente waarden hebben (ook na toevoeg/wijzig-modus)
+
+  function getSteps() {
+    return {
+      s2: JSON.parse(sessionStorage.getItem('wms_step2') || '{}'),
+      s3: JSON.parse(sessionStorage.getItem('wms_step3') || '{}'),
+    };
+  }
+
+  function getActieveLaagnaam() {
+    // In wijzig-modus: gebruik de aangepaste naam
+    // In toevoeg-modus: gebruik de nieuwe laagnaam
+    // In normale modus: gebruik de naam uit stap 1
+    const wijzigNaam  = sessionStorage.getItem('wms_wijzig_laagnaam_actief');
+    const toevoegNaam = sessionStorage.getItem('wms_nieuwe_laagnaam_actief');
+    return wijzigNaam || toevoegNaam || step1.wms_laagnaam || '';
+  }
 
   function renderSummary() {
+    const { s2: step2, s3: step3 } = getSteps();
+    const actieveLaagnaam = getActieveLaagnaam();
+
     // Kleur swatch HTML voor samenvatting
     const kleurHtml = step3.color
       ? `<span style="display:inline-flex;align-items:center;gap:8px;">
@@ -142,7 +201,7 @@
       { section: 'Stap 1 · Basisgegevens' },
       { key: 'MapFile naam',    val: step1.mapfile_naam   },
       { key: 'WMS Groepsnaam', val: step1.wms_groepsnaam  },
-      { key: 'WMS Laagnaam',   val: step1.wms_laagnaam    },
+      { key: 'WMS Laagnaam',   val: actieveLaagnaam       },
       { section: 'Stap 2 · Externe bronnen' },
       { key: 'Team',             val: step2.publisher    },
       { key: 'Tabel naam',       val: step2.table_name   },
@@ -158,7 +217,6 @@
     grid.innerHTML = rows.map(r => r.section ? `<div class="summary-cell header-cell">${r.section}</div>` : `
         <div class="summary-cell"><span class="summary-key">${r.key}</span><span class="summary-val">${r.raw ? r.val : (r.val || '—')}</span></div>`).join('');
   }
-  renderSummary();
 
   let mapfileContent = '';
 
@@ -167,8 +225,11 @@
     document.getElementById('genereer-spinner').style.display = 'block';
     document.getElementById('btn-genereer').disabled = true;
 
+    const { s2: step2, s3: step3 } = getSteps();
+    const actieveLaagnaam = getActieveLaagnaam();
     const payload = {
       ...step1, ...step2,
+      wms_laagnaam:  actieveLaagnaam,   // gebruik altijd de actieve laagnaam
       color:         step3.color         || '',
       filter_kolom:  step3.filter_aan    ? step3.filter_kolom  : '',
       filter_waarde: step3.filter_aan    ? step3.filter_waarde : '',
@@ -185,17 +246,12 @@
       const data = await resp.json();
       mapfileContent = data.mapfile || '';
 
-      // Syntax Highlighting
-      function escapeHtml(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
-      let h = escapeHtml(mapfileContent);
-
-      // VOLGORDE IS CRUCIAAL:
-      h = h.replace(/"([^"]*)"/g, '"<span class="str">$1</span>"'); // 1. Strings
-      h = h.replace(/^(\s*)(NAME|GROUP|DATA|TYPE|TEMPLATE|INCLUDE|COLOR|OPACITY|OUTLINECOLOR|WIDTH|ANTIALIAS|AUTH|CONNECTIONTYPE|CONNECTION)\b/gm, '$1<span class="key">$2</span>'); // 2. Keys
-      h = h.replace(/(#[^\n]+)/g, '<span class="cmt">$1</span>'); // 3. Comments
-      h = h.replace(/^(\s*)(MAP|END|LAYER|CLASS|STYLE|WEB|METADATA|PROJECTION)\b/gm, '$1<span class="kw">$2</span>'); // 4. Keywords laatst
-
-      document.getElementById('mapfile-output').innerHTML = h;
+      renderHighlightedMapfile(mapfileContent);
+      aantalLagen = 1;
+      updateLaagTeller();
+      // Sla mapfile op voor eventuele extra lagen
+      sessionStorage.setItem('wms_bestaande_mapfile', mapfileContent);
+      sessionStorage.setItem('wms_aantal_lagen', '1');
       document.getElementById('card-resultaat').style.display = 'block';
       document.getElementById('stepper-4').className = 'step done';
       document.getElementById('stepper-5').className = 'step active';
@@ -219,9 +275,264 @@
     a.click();
   }
 
+  // ── Laagenteller bijhouden ────────────────────
+  let aantalLagen = 1;
+
+  function updateLaagTeller() {
+    const t = document.getElementById('laag-teller');
+    if (t) t.textContent = aantalLagen + (aantalLagen === 1 ? ' laag' : ' lagen');
+  }
+
+  // ── Laagnamen uitlezen uit MapFile tekst ──────
+  function getLaagNamen(mapTekst) {
+    const namen = [];
+    const regels = mapTekst.split('\n');
+    let inLayer = false;
+    for (const regel of regels) {
+      const s = regel.trim();
+      if (s === 'LAYER') { inLayer = true; continue; }
+      if (inLayer && s.startsWith('NAME')) {
+        const naam = s.split(/\s+/).slice(1).join(' ').replace(/"/g, '').trim();
+        if (naam) namen.push(naam);
+        inLayer = false;
+      }
+    }
+    return namen;
+  }
+
+  // ── Laagknoppen renderen met cog-icoon ───────
+  function renderLaagKnoppen(mapTekst) {
+    const namen     = getLaagNamen(mapTekst);
+    const sectie    = document.getElementById('wijzig-layer-sectie');
+    const container = document.getElementById('laag-knoppen');
+
+    if (namen.length < 1) { sectie.style.display = 'none'; return; }
+
+    // MDI cog-outline icoon als inline SVG (wit)
+    const cogSvg = `<svg style="width:18px;height:18px;flex-shrink:0;" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+    </svg>`;
+
+    sectie.style.display = 'block';
+    container.innerHTML = namen.map(naam => `
+      <button class="btn-laag" onclick="wijzigLaag('${naam}')" title="Laag '${naam}' aanpassen">
+        ${cogSvg}
+        <span>${naam}</span>
+      </button>`).join('');
+  }
+
+  // ── Wijzig een bestaande laag ─────────────────
+  function wijzigLaag(laagNaam) {
+    sessionStorage.setItem('wms_wijzig_modus',          'true');
+    sessionStorage.setItem('wms_wijzig_laagnaam',       laagNaam);  // wordt naam in stap 2 (aanpasbaar)
+    sessionStorage.setItem('wms_wijzig_laagnaam_orig',  laagNaam);  // origineel — voor replace-layer zoekterm
+    sessionStorage.setItem('wms_bestaande_mapfile',     mapfileContent);
+    sessionStorage.setItem('wms_aantal_lagen',          String(aantalLagen));
+    sessionStorage.removeItem('wms_step2');
+    sessionStorage.removeItem('wms_step3');
+    window.location.href = '/scenario2';
+  }
+
+  // ── Nieuwe laag toevoegen → direct naar Stap 2 ─
+  function voegNieuweLaagToe() {
+    sessionStorage.setItem('wms_toevoegen_modus', 'true');
+    sessionStorage.setItem('wms_bestaande_mapfile', mapfileContent);
+    sessionStorage.setItem('wms_aantal_lagen', String(aantalLagen));
+    sessionStorage.removeItem('wms_step2');
+    sessionStorage.removeItem('wms_step3');
+    window.location.href = '/scenario2';
+  }
+
   function nieuweWMS() {
     sessionStorage.clear();
     window.location.href = '/';
   }
+
+  // ── Controleer of we in toevoeg- of wijzig-modus zijn ────
+  async function checkToevoegModus() {
+    // ── Annuleer-modus: toon direct de bestaande mapfile ─────────────
+    const toonResultaat = sessionStorage.getItem('wms_toon_resultaat');
+    if (toonResultaat === 'true') {
+      sessionStorage.removeItem('wms_toon_resultaat');
+      const bestaandeMap = sessionStorage.getItem('wms_bestaande_mapfile');
+      const savedLagen   = parseInt(sessionStorage.getItem('wms_aantal_lagen') || '1');
+      if (bestaandeMap) {
+        mapfileContent = bestaandeMap;
+        aantalLagen    = savedLagen;
+        updateLaagTeller();
+        renderHighlightedMapfile(mapfileContent);
+        document.getElementById('card-genereer').style.display  = 'none';
+        document.getElementById('card-resultaat').style.display = 'block';
+        document.getElementById('stepper-4').className = 'step done';
+        document.getElementById('stepper-5').className = 'step active';
+      }
+      return;
+    }
+    const toevoegModus   = sessionStorage.getItem('wms_toevoegen_modus');
+    const wijzigModus    = sessionStorage.getItem('wms_wijzig_modus');
+    const bestaandeMap   = sessionStorage.getItem('wms_bestaande_mapfile');
+    const savedLagen     = parseInt(sessionStorage.getItem('wms_aantal_lagen') || '1');
+    const s2 = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
+    const s3 = JSON.parse(sessionStorage.getItem('wms_step3') || '{}');
+
+    // ── Wijzig-modus: vervang een bestaande laag ──
+    if (wijzigModus === 'true' && bestaandeMap) {
+      sessionStorage.removeItem('wms_wijzig_modus');
+      aantalLagen = savedLagen;
+
+      if (s2.table_name && s3.color) {
+        const teVervangen = sessionStorage.getItem('wms_wijzig_laagnaam') || '';
+        sessionStorage.setItem('wms_wijzig_laagnaam_actief', teVervangen);
+        sessionStorage.removeItem('wms_nieuwe_laagnaam_actief');
+        sessionStorage.removeItem('wms_wijzig_laagnaam');
+
+        // Verberg de "Creëer WMS" knop — we vervangen direct
+        document.getElementById('card-genereer').style.display = 'none';
+        await voerLaagVervangingUit(bestaandeMap, s2, s3, teVervangen);
+      }
+      return;
+    }
+
+    // ── Toevoeg-modus: voeg een nieuwe laag toe ───
+    if (toevoegModus === 'true' && bestaandeMap) {
+      sessionStorage.removeItem('wms_toevoegen_modus');
+      aantalLagen = savedLagen;
+
+      const nieuweLaagNaam = sessionStorage.getItem('wms_nieuwe_laagnaam') || '';
+      sessionStorage.setItem('wms_nieuwe_laagnaam_actief', nieuweLaagNaam);
+      sessionStorage.removeItem('wms_wijzig_laagnaam_actief');
+
+      // Verberg de "Creëer WMS" knop — we voegen direct toe
+      document.getElementById('card-genereer').style.display = 'none';
+      renderSummary();
+
+      if (s2.table_name && s3.color) {
+        await voerLaagToevoegingUit(bestaandeMap, s2, s3);
+      }
+    }
+  }
+
+  async function voerLaagVervangingUit(bestaandeMap, s2, s3, nieuweNaam) {
+    document.getElementById('genereer-label').textContent = 'Laag vervangen…';
+    document.getElementById('genereer-spinner').style.display = 'block';
+    document.getElementById('btn-genereer').disabled = true;
+
+    // Originele naam = zoekterm in MapFile; nieuwe naam = wat de gebruiker heeft ingevuld
+    const origineeleNaam = sessionStorage.getItem('wms_wijzig_laagnaam_orig') || nieuweNaam;
+    sessionStorage.removeItem('wms_wijzig_laagnaam_orig');
+
+    const payload = {
+      ...step1, ...s2,
+      wms_laagnaam:       nieuweNaam,       // naam in de gegenereerde LAYER
+      replace_layer_name: origineeleNaam,   // zoekterm: welke LAYER vervangen
+      existing_mapfile:   bestaandeMap,
+      color:         s3.color         || '',
+      filter_kolom:  s3.filter_aan    ? s3.filter_kolom  : '',
+      filter_waarde: s3.filter_aan    ? s3.filter_waarde : '',
+      label_kolom:   s3.label_aan     ? s3.label_kolom   : '',
+    };
+
+    try {
+      const resp = await fetch('/api/replace-layer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await resp.json();
+      mapfileContent = data.mapfile || '';
+      renderHighlightedMapfile(mapfileContent);
+
+      // Bewaar de bijgewerkte mapfile zodat verdere bewerkingen correct zijn
+      sessionStorage.setItem('wms_bestaande_mapfile', mapfileContent);
+      sessionStorage.setItem('wms_aantal_lagen', String(aantalLagen));
+      updateLaagTeller();
+
+      document.getElementById('card-resultaat').style.display = 'block';
+      document.getElementById('stepper-4').className = 'step done';
+      document.getElementById('stepper-5').className = 'step active';
+      document.getElementById('card-resultaat').scrollIntoView({ behavior: 'smooth' });
+
+    } catch (err) {
+      alert('Fout bij vervangen laag: ' + err.message);
+    } finally {
+      document.getElementById('genereer-label').textContent = 'Creëer WMS';
+      document.getElementById('genereer-spinner').style.display = 'none';
+      document.getElementById('btn-genereer').disabled = false;
+    }
+  }
+
+  async function voerLaagToevoegingUit(bestaandeMap, s2, s3) {
+    document.getElementById('genereer-label').textContent = 'Laag toevoegen…';
+    document.getElementById('genereer-spinner').style.display = 'block';
+    document.getElementById('btn-genereer').disabled = true;
+
+    // Gebruik de door de gebruiker ingevoerde laagnaam
+    const nieuweLaagNaam = sessionStorage.getItem('wms_nieuwe_laagnaam') || s2.table_name || 'laag';
+    sessionStorage.removeItem('wms_nieuwe_laagnaam');
+
+    const payload = {
+      ...step1, ...s2,
+      wms_laagnaam:     nieuweLaagNaam,
+      existing_mapfile: bestaandeMap,
+      color:         s3.color         || '',
+      filter_kolom:  s3.filter_aan    ? s3.filter_kolom  : '',
+      filter_waarde: s3.filter_aan    ? s3.filter_waarde : '',
+      label_kolom:   s3.label_aan     ? s3.label_kolom   : '',
+    };
+
+    try {
+      const resp = await fetch('/api/add-layer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await resp.json();
+      mapfileContent = data.mapfile || '';
+      aantalLagen++;
+      updateLaagTeller();
+      renderHighlightedMapfile(mapfileContent);
+
+      document.getElementById('card-resultaat').style.display = 'block';
+      document.getElementById('stepper-4').className = 'step done';
+      document.getElementById('stepper-5').className = 'step active';
+      document.getElementById('card-resultaat').scrollIntoView({ behavior: 'smooth' });
+
+      sessionStorage.setItem('wms_bestaande_mapfile', mapfileContent);
+      sessionStorage.setItem('wms_aantal_lagen', String(aantalLagen));
+
+    } catch (err) {
+      alert('Fout bij toevoegen laag: ' + err.message);
+    } finally {
+      document.getElementById('genereer-label').textContent = 'Creëer WMS';
+      document.getElementById('genereer-spinner').style.display = 'none';
+      document.getElementById('btn-genereer').disabled = false;
+    }
+  }
+
+  // ── Syntax highlighting als aparte functie ────
+  function renderHighlightedMapfile(content) {
+    function escapeHtml(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+    let h = escapeHtml(content);
+    h = h.replace(/"([^"]*)"/g, '"<span class="str">$1</span>"');
+    h = h.replace(/^(\s*)(NAME|GROUP|DATA|TYPE|TEMPLATE|INCLUDE|COLOR|OPACITY|OUTLINECOLOR|WIDTH|ANTIALIAS|AUTH|CONNECTIONTYPE|CONNECTION)\b/gm, '$1<span class="key">$2</span>');
+    h = h.replace(/(#[^\n]+)/g, '<span class="cmt">$1</span>');
+    h = h.replace(/^(\s*)(MAP|END|LAYER|CLASS|STYLE|WEB|METADATA|PROJECTION)\b/gm, '$1<span class="kw">$2</span>');
+    document.getElementById('mapfile-output').innerHTML = h;
+    renderLaagKnoppen(content);
+  }
+
+  // Start toevoeg-modus check na laden — renderSummary wordt daarna aangeroepen
+  checkToevoegModus().then(() => {
+    // In normale modus (eerste laag): wis de actieve laagnaam keys
+    if (!sessionStorage.getItem('wms_wijzig_laagnaam_actief') &&
+        !sessionStorage.getItem('wms_nieuwe_laagnaam_actief')) {
+      sessionStorage.removeItem('wms_wijzig_laagnaam_actief');
+      sessionStorage.removeItem('wms_nieuwe_laagnaam_actief');
+    }
+    // Altijd samenvatting renderen (ook in normale modus)
+    renderSummary();
+  });
 </script>
 {% endblock %}

@@ -44,10 +44,18 @@
           <label>
             Kolomnaam
             <span class="tooltip-icon">?
-              <span class="tooltip-text">De naam van de kolom waarop gefilterd wordt. Bijv. <strong>type</strong>.</span>
+              <span class="tooltip-text">Kies de kolom waarop gefilterd wordt uit de lijst die uit de DSO API wordt opgehaald.</span>
             </span>
           </label>
-          <input type="text" id="filter_kolom" placeholder="bijv. type" autocomplete="off"/>
+          <div class="dropdown-wrapper">
+            <select id="filter_kolom" class="kolom-select">
+              <option value="">— Kies een kolom —</option>
+            </select>
+            <span id="filter-kolom-spinner" class="kolom-spinner" style="display:none;">
+              <span class="spinner" style="display:block; border-color:rgba(0,0,0,.15); border-top-color:var(--red);"></span>
+              Kolommen ophalen…
+            </span>
+          </div>
         </div>
         <div class="form-group">
           <label>
@@ -302,26 +310,68 @@
     tryEnableNext();
   }
 
-  // ── Filter ───────────────────────────────────
-  function setFilter(ja) {
+  async function setFilter(ja) {
     filterAan = ja;
     document.getElementById('btn-ja').className  = 'choice-btn' + (ja  ? ' selected-ja'  : '');
     document.getElementById('btn-nee').className = 'choice-btn' + (!ja ? ' selected-nee' : '');
     document.getElementById('filter-fields').style.display = ja ? 'block' : 'none';
     tryEnableNext();
-    if (ja) updatePreview();
+    if (ja) {
+      updatePreview();
+      // Vul filter-kolom dropdown als die nog leeg is
+      const select = document.getElementById('filter_kolom');
+      if (select.options.length <= 1) {
+        await laadFilterKolommen();
+      }
+    }
   }
 
   function updatePreview() {
-    const kolom  = document.getElementById('filter_kolom').value.trim();
+    const kolom  = document.getElementById('filter_kolom').value;
     const waarde = document.getElementById('filter_waarde').value.trim();
     const preview = document.getElementById('filter-preview');
     document.getElementById('preview-sql').textContent = `WHERE ${kolom} = '${waarde}'`;
     preview.style.display = (kolom && waarde) ? 'flex' : 'none';
   }
 
-  document.getElementById('filter_kolom').addEventListener('input', updatePreview);
+  document.getElementById('filter_kolom').addEventListener('change', updatePreview);
   document.getElementById('filter_waarde').addEventListener('input', updatePreview);
+
+  async function laadFilterKolommen() {
+    const step2   = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
+    const url_api = step2.url_api || '';
+    const select  = document.getElementById('filter_kolom');
+    const spinner = document.getElementById('filter-kolom-spinner');
+
+    if (!url_api) return;
+
+    spinner.style.display = 'flex';
+    select.style.display  = 'none';
+
+    try {
+      const resp = await fetch('/api/fetch-columns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url_api })
+      });
+      const data = await resp.json();
+
+      select.innerHTML = '<option value="">— Kies een kolom —</option>';
+      (data.kolommen || []).forEach(k => {
+        const opt = document.createElement('option');
+        // k is nu {label: 'bouwstroompuntId', value: 'bouwstroompunt_id'}
+        // of een string (fallback voor oude API)
+        opt.value       = typeof k === 'object' ? k.value : k;
+        opt.textContent = typeof k === 'object' ? k.label : k;
+        select.appendChild(opt);
+      });
+    } catch (err) {
+      console.error('Filter kolommen ophalen mislukt:', err);
+    } finally {
+      spinner.style.display = 'none';
+      select.style.display  = '';
+    }
+  }
 
   // ── Volgende knop ────────────────────────────
   function tryEnableNext() {
@@ -335,12 +385,12 @@
   function goNext() {
     if (filterAan === null || gekozenKleur === null) return;
 
-    const kolom  = document.getElementById('filter_kolom').value.trim();
+    const kolom  = document.getElementById('filter_kolom').value;
     const waarde = document.getElementById('filter_waarde').value.trim();
 
     if (filterAan && (!kolom || !waarde)) {
-      document.getElementById('filter_kolom').style.borderColor  = kolom  ? '' : 'var(--red)';
-      document.getElementById('filter_waarde').style.borderColor = waarde ? '' : 'var(--red)';
+      if (!kolom)  document.getElementById('filter_kolom').style.borderColor  = 'var(--red)';
+      if (!waarde) document.getElementById('filter_waarde').style.borderColor = 'var(--red)';
       return;
     }
 
@@ -348,8 +398,8 @@
       filter_aan:    filterAan,
       filter_kolom:  filterAan ? kolom  : '',
       filter_waarde: filterAan ? waarde : '',
-      color:     gekozenKleur,
-      outline: gekozenKleur,   // lijnkleur = zelfde als invulkleur
+      color:         gekozenKleur,
+      outline:       gekozenKleur,
     }));
 
     window.location.href = '/scenario4';
@@ -404,8 +454,8 @@
       select.innerHTML = '<option value="">— Kies een kolom —</option>';
       (data.kolommen || []).forEach(k => {
         const opt = document.createElement('option');
-        opt.value = k;
-        opt.textContent = k;
+        opt.value       = typeof k === 'object' ? k.value : k;
+        opt.textContent = typeof k === 'object' ? k.label : k;
         select.appendChild(opt);
       });
 
@@ -462,10 +512,12 @@
 
   // ── Herstel opgeslagen waarden ───────────────
   const saved = JSON.parse(sessionStorage.getItem('wms_step3') || '{}');
-  if (saved.filter_aan === true)  setFilter(true);
+  if (saved.filter_aan === true)  setFilter(true).then(() => {
+    if (saved.filter_kolom) document.getElementById('filter_kolom').value  = saved.filter_kolom;
+    if (saved.filter_waarde) document.getElementById('filter_waarde').value = saved.filter_waarde;
+    updatePreview();
+  });
   if (saved.filter_aan === false) setFilter(false);
-  if (saved.filter_kolom)  document.getElementById('filter_kolom').value  = saved.filter_kolom;
-  if (saved.filter_waarde) document.getElementById('filter_waarde').value = saved.filter_waarde;
   if (saved.color) selectKleur(saved.color);
   if (saved.label_aan === true)  setLabel(true).then(() => {
     if (saved.label_kolom) document.getElementById('label_kolom').value = saved.label_kolom;
