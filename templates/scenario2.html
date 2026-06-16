@@ -19,31 +19,34 @@
   <div class="card-header">
     <h2>Gegevens uit externe bronnen halen</h2>
     <p class="subtitle">
-      Vul de drie URL's in en klik op <strong>Gegevens ophalen</strong>. De benodigde gegevens worden
+      Vul de twee URL's in en klik op <strong>Gegevens ophalen</strong>. De benodigde gegevens worden
       automatisch uit het Amsterdamse schema en de DSO API opgehaald.
     </p>
   </div>
 
   <div class="card-body">
 
+    <!-- ── Laagnaam invoer (alleen in toevoeg-modus) ─── -->
+    <div id="laagnaam-sectie" style="display:none;">
+      <h2 id="laagnaam-titel" style="font-size:22px; font-weight:600; color:var(--ink); margin-bottom:16px;">
+        Naam nieuwe layer
+      </h2>
+      <div class="form-group" style="max-width:480px; margin-bottom:24px;">
+        <input type="text" id="nieuwe-laag-naam" placeholder="bijv. water"
+               autocomplete="off" oninput="checkLaagnaam()"
+               style="font-size:14px;"/>
+      </div>
+      <hr style="border:none; border-top:1px solid var(--border); margin-bottom:24px;"/>
+    </div>
+
     <!-- ── URL invoervelden ──────────────────────── -->
     <div class="section-label">URL's</div>
 
     <div style="display:flex; flex-direction:column; gap:16px;">
 
-      <div class="form-group">
-        <label>
-          Amsterdam Schema — Dataset URL <span class="req">*</span>
-          <span class="tooltip-icon">?
-            <span class="tooltip-text">
-              De URL naar het <strong>dataset.json</strong> bestand in het Amsterdam Schema.
-              Bijv. het water dataset bestand op GitHub.
-            </span>
-          </span>
-        </label>
-        <input type="url" id="url_dataset" name="url_dataset"
-               placeholder="https://github.com/Amsterdam/amsterdamschema/blob/master/datasets/water/dataset.json"
-               autocomplete="off"/>
+      <div class="form-group" style="display:none;">
+        <label>Amsterdam Schema — Dataset URL</label>
+        <input type="url" id="url_dataset" name="url_dataset" autocomplete="off"/>
       </div>
 
       <div class="form-group">
@@ -51,13 +54,13 @@
           Amsterdam Schema — Tabel URL <span class="req">*</span>
           <span class="tooltip-icon">?
             <span class="tooltip-text">
-              De URL naar het <strong>tabel JSON</strong> bestand (bijv. v3.json) in het Amsterdam Schema.
-              Hieruit wordt onder andere de geometriekolom opgehaald.
+              De URL naar het <strong>tabel JSON</strong> bestand (bijv. v1.json) in het Amsterdam Schema.
+              De dataset URL wordt automatisch afgeleid uit dit pad.
             </span>
           </span>
         </label>
         <input type="url" id="url_tabel" name="url_tabel"
-               placeholder="https://github.com/Amsterdam/amsterdamschema/blob/master/datasets/water/binnenwater/v3.json"
+               placeholder="https://github.com/Amsterdam/amsterdam-schema/blob/master/datasets/water/binnenwater/v3.json"
                autocomplete="off"/>
       </div>
 
@@ -96,13 +99,17 @@
 
     <!-- ── Navigatie ────────────────────────────── -->
     <div class="btn-row">
-      <a href="/" class="btn btn-secondary">
+      <a id="btn-vorige" href="/" class="btn btn-secondary">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         Vorige
       </a>
+      <button id="btn-annuleren" class="btn btn-secondary" onclick="annuleren()"
+              style="display:none;">
+        Annuleren
+      </button>
       <button id="btn-next" class="btn btn-primary" onclick="goNext()" disabled
               style="opacity:.4; cursor:not-allowed;">
         Volgende
@@ -178,7 +185,6 @@
   }
 </style>
 <script>
-  // Stap 1 gegevens herstellen
   const step1 = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
 
   // Opgeslagen URLs terugzetten (bij terugnavigatie)
@@ -186,6 +192,55 @@
   if (step2.url_dataset) document.getElementById('url_dataset').value = step2.url_dataset;
   if (step2.url_tabel)   document.getElementById('url_tabel').value   = step2.url_tabel;
   if (step2.url_api)     document.getElementById('url_api').value     = step2.url_api;
+
+  // ── Toon laagnaam-veld in toevoeg- én wijzig-modus ─
+  const toevoegModus = sessionStorage.getItem('wms_toevoegen_modus') === 'true';
+  const wijzigModus  = sessionStorage.getItem('wms_wijzig_modus')    === 'true';
+
+  if (toevoegModus || wijzigModus) {
+    const sectie = document.getElementById('laagnaam-sectie');
+    const titel  = document.getElementById('laagnaam-titel');
+    sectie.style.display = 'block';
+
+    // In toevoeg/wijzig-modus: verberg "Vorige", toon "Annuleren"
+    document.getElementById('btn-vorige').style.display    = 'none';
+    document.getElementById('btn-annuleren').style.display = 'inline-flex';
+
+    if (wijzigModus) {
+      titel.textContent = 'Naam layer';
+      const bestaandeNaam = sessionStorage.getItem('wms_wijzig_laagnaam') || '';
+      document.getElementById('nieuwe-laag-naam').value = bestaandeNaam;
+
+      // Haal de URLs op die specifiek bij deze laag horen
+      const laagUrls = JSON.parse(
+        sessionStorage.getItem(`wms_urls_${bestaandeNaam}`) || '{}'
+      );
+      if (laagUrls.url_dataset) document.getElementById('url_dataset').value = laagUrls.url_dataset;
+      if (laagUrls.url_tabel)   document.getElementById('url_tabel').value   = laagUrls.url_tabel;
+      if (laagUrls.url_api)     document.getElementById('url_api').value     = laagUrls.url_api;
+
+    } else {
+      titel.textContent = 'Naam nieuwe layer';
+      const opgeslagenNaam = sessionStorage.getItem('wms_nieuwe_laagnaam') || '';
+      if (opgeslagenNaam) document.getElementById('nieuwe-laag-naam').value = opgeslagenNaam;
+    }
+  }
+
+  function checkLaagnaam() {
+    const naam = document.getElementById('nieuwe-laag-naam').value.trim();
+    sessionStorage.setItem('wms_nieuwe_laagnaam', naam);
+  }
+
+  function annuleren() {
+    // Wis de modus-vlaggen
+    sessionStorage.removeItem('wms_toevoegen_modus');
+    sessionStorage.removeItem('wms_wijzig_modus');
+    sessionStorage.removeItem('wms_nieuwe_laagnaam');
+    sessionStorage.removeItem('wms_wijzig_laagnaam');
+    // Geef aan dat Stap 4 direct de bestaande mapfile moet tonen
+    sessionStorage.setItem('wms_toon_resultaat', 'true');
+    window.location.href = '/scenario4';
+  }
 
   // ── Gegevens ophalen ────────────────────────────
   async function fetchData() {
@@ -197,8 +252,8 @@
     const errEl = document.getElementById('error-msg');
     errEl.style.display = 'none';
 
-    if (!url_dataset || !url_tabel || !url_api) {
-      errEl.textContent = 'Vul alle drie URL-velden in voordat u gegevens ophaalt.';
+    if (!url_tabel || !url_api) {
+      errEl.textContent = 'Vul beide URL-velden in voordat u gegevens ophaalt.';
       errEl.style.display = 'block';
       return;
     }
@@ -285,14 +340,26 @@
         mainGeometry: data.mainGeometry || 'geometrie',
         geometryType: data.geometryType || 'POLYGON',
         unique_id:    data.unique_id    || 'id',
+        crs:          data.crs          || 'EPSG:28992',
       };
       sessionStorage.setItem('wms_step2', JSON.stringify(step2data));
 
-      // Volgende knop activeren
-      const btnNext = document.getElementById('btn-next');
-      btnNext.disabled = false;
-      btnNext.style.opacity = '1';
-      btnNext.style.cursor  = 'pointer';
+      // Sla URLs ook op per laagnaam zodat ze terugkomen bij wijziging
+      const step1data = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
+      const huidigeLaagNaam = wijzigModus
+        ? (sessionStorage.getItem('wms_wijzig_laagnaam') || '')
+        : toevoegModus
+          ? (sessionStorage.getItem('wms_nieuwe_laagnaam') || '')
+          : (step1data.wms_laagnaam || '');   // eerste laag: naam uit stap 1
+      if (huidigeLaagNaam) {
+        sessionStorage.setItem(
+          `wms_urls_${huidigeLaagNaam}`,
+          JSON.stringify({ url_dataset, url_tabel, url_api })
+        );
+      }
+
+      // Volgende knop activeren — maar check eerst laagnaam in toevoeg-modus
+      activeerVolgendeKnop();
 
     } catch (err) {
       errEl.textContent = 'Netwerkfout: ' + err.message;
@@ -304,7 +371,38 @@
     }
   }
 
+  function activeerVolgendeKnop() {
+    // In toevoeg- of wijzig-modus: laagnaam moet ingevuld zijn
+    if (toevoegModus || wijzigModus) {
+      const naam = document.getElementById('nieuwe-laag-naam').value.trim();
+      if (!naam) {
+        document.getElementById('nieuwe-laag-naam').style.borderColor = 'var(--red)';
+        document.getElementById('nieuwe-laag-naam').focus();
+        return;
+      }
+    }
+    const btnNext = document.getElementById('btn-next');
+    btnNext.disabled = false;
+    btnNext.style.opacity = '1';
+    btnNext.style.cursor  = 'pointer';
+  }
+
   function goNext() {
+    if (toevoegModus || wijzigModus) {
+      const naam = document.getElementById('nieuwe-laag-naam').value.trim();
+      if (!naam) {
+        document.getElementById('nieuwe-laag-naam').style.borderColor = 'var(--red)';
+        document.getElementById('nieuwe-laag-naam').focus();
+        return;
+      }
+      if (toevoegModus) {
+        sessionStorage.setItem('wms_nieuwe_laagnaam', naam);
+      } else {
+        // Bij wijziging: sla de (eventueel aangepaste) naam op
+        // zodat voerLaagVervangingUit de juiste naam gebruikt
+        sessionStorage.setItem('wms_wijzig_laagnaam', naam);
+      }
+    }
     window.location.href = '/scenario3';
   }
 </script>
