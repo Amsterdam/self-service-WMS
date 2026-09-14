@@ -1,4 +1,5 @@
 import re
+import time
 import logging
 import traceback
 from urllib.parse import urlparse
@@ -64,6 +65,21 @@ app.secret_key = "wms-secret-key-2024"
 # ──────────────────────────────────────────────
 
 @app.route("/")
+def intro(): return render_template("intro.html")
+
+@app.route("/publicatie/schema")
+def pub_schema(): return render_template("pub_schema.html")
+
+@app.route("/publicatie/kaartlaag")
+def pub_kaartlaag(): return render_template("pub_kaartlaag.html")
+
+@app.route("/publicatie/eigenschappen")
+def pub_eigenschappen(): return render_template("pub_eigenschappen.html")
+
+@app.route("/publicatie/samenvatting")
+def pub_samenvatting(): return render_template("pub_samenvatting.html")
+
+@app.route("/scenario1")
 def scenario1(): return render_template("scenario1.html")
 
 @app.route("/scenario2")
@@ -133,6 +149,13 @@ def fetch_data():
         dataset_id  = ds_json.get("id", "dataset")
         description = ds_json.get("description", "")
         ds_auth     = ds_json.get("auth", "OPENBAAR")
+
+        # Thema is in het Amsterdams Schema een lijst
+        raw_theme = ds_json.get("theme", [])
+        if isinstance(raw_theme, str):
+            raw_theme = [raw_theme]
+        themes        = [t for t in raw_theme if t]
+        dataset_title = ds_json.get("title", "")
 
         if not is_openbaar(ds_auth):
             return jsonify({
@@ -245,10 +268,42 @@ def fetch_data():
         unique_id = next((r for r in schema_obj.get("required", []) if r != "schema"), "id")
         crs       = ds_json.get("crs", "EPSG:28992")
 
+        # ── 5. Attributenlijst voor de detailpagina ───────────────────────
+        # title-tag gebruiken waar die bestaat, anders valt de frontend terug
+        # op de attribuutnaam met een vrij tekstveld ernaast.
+        GEO_NAMEN = {"geometry", "geometrie", "geom"}
+        attributen = []
+        for attr_naam, attr_def in props.items():
+            if attr_naam == "schema" or attr_naam.lower() in GEO_NAMEN:
+                continue
+            titel = attr_def.get("title") if isinstance(attr_def, dict) else None
+            attributen.append({
+                "naam":   attr_naam,
+                "kolom":  to_snake_case(attr_naam),
+                "titel":  titel or "",
+                "heeft_titel": bool(titel),
+            })
+
+        # ── 6. DSO API URL afleiden uit het schemapad ─────────────────────
+        # .../datasets/varen/ligplaats/v1.json
+        #  → https://api.data.amsterdam.nl/v1/varen/v1/ligplaats
+        url_api_afgeleid = ""
+        m_api = re.search(r"/datasets/([^/]+)/([^/]+)/v(\d+)\.json", url_tabel_raw)
+        if m_api:
+            url_api_afgeleid = (
+                f"{DSO_API_BASE}/v1/{m_api.group(1)}"
+                f"/v{m_api.group(3)}/{to_snake_case(tabel_id)}"
+            )
+
         return jsonify({
             "publisher": team_name, "description": description, "table_name": full_table_name,
             "mainGeometry": main_geo, "geometryType": geo_type, "auth": ds_auth,
             "unique_id": unique_id, "crs": crs,
+            "themes": themes, "dataset_title": dataset_title,
+            "dataset_id": dataset_id, "tabel_id": tabel_id,
+            "attributen": attributen,
+            "url_dataset_afgeleid": url_dataset_raw,
+            "url_api_afgeleid": url_api_afgeleid,
         })
 
     except ValueError:
@@ -258,6 +313,85 @@ def fetch_data():
         # Fix voor Information Exposure: Geen str(e) naar de gebruiker
         logger.error("Fout in fetch-data: %s", traceback.format_exc())
         return jsonify({"error": "Er is een interne fout opgetreden bij het ophalen van data."}), 500
+
+# ──────────────────────────────────────────────
+# API: Kaartlagen-register (collecties en sublagen)
+# ──────────────────────────────────────────────
+
+KAARTLAGEN_PAD = "/v1/geo_services/wms_kaartlagen"
+_cache = {}          # sleutel -> (tijdstip, waarde)
+_CACHE_TTL = 900     # 15 minuten
+
+def _uit_cache(sleutel):
+    item = _cache.get(sleutel)
+    if item and (time.time() - item[0]) < _CACHE_TTL:
+        return item[1]
+    return None
+
+def _haal_kaartlagen(velden: str, collectie: str = None, max_paginas: int = 15):
+    """Haalt rijen op uit het kaartlagen-register, met paginering."""
+    rijen   = []
+    params  = {"_fields": velden, "_pageSize": "500", "_format": "json"}
+    if collectie:
+        params["collectie"] = collectie
+    else:
+        params["collectie[isempty]"] = "false"
+
+    url     = f"{DSO_API_BASE}{KAARTLAGEN_PAD}"
+    headers = {"Accept": "application/hal+json"}
+    pagina  = 1
+    while pagina <= max_paginas:
+        p = dict(params, page=str(pagina))
+        resp = requests.get(url, params=p, headers=headers, timeout=20)
+        resp.raise_for_status()
+        blok = resp.json()
+        items = list((blok.get("_embedded") or {}).values())
+        items = items[0] if items else []
+        if not items:
+            break
+        rijen.extend(items)
+        if not (blok.get("_links") or {}).get("next"):
+            break
+        pagina += 1
+    return rijen
+
+
+@app.route("/api/collecties", methods=["GET"])
+def api_collecties():
+    """Unieke collectienamen uit het kaartlagen-register."""
+    gecached = _uit_cache("collecties")
+    if gecached is not None:
+        return jsonify({"collecties": gecached, "uit_cache": True})
+    try:
+        rijen = _haal_kaartlagen("collectie")
+        namen = sorted({r.get("collectie") for r in rijen if r.get("collectie")})
+        _cache["collecties"] = (time.time(), namen)
+        return jsonify({"collecties": namen, "uit_cache": False})
+    except Exception:
+        logger.error("Fout in api-collecties: %s", traceback.format_exc())
+        return jsonify({"error": "Collecties konden niet worden opgehaald."}), 502
+
+
+@app.route("/api/sublagen", methods=["GET"])
+def api_sublagen():
+    """Unieke sublaagnamen (layerTitle) binnen een collectie."""
+    collectie = (request.args.get("collectie") or "").strip()
+    if not collectie:
+        return jsonify({"error": "Geen collectie opgegeven"}), 400
+
+    sleutel = f"sublagen:{collectie}"
+    gecached = _uit_cache(sleutel)
+    if gecached is not None:
+        return jsonify({"sublagen": gecached, "uit_cache": True})
+    try:
+        rijen = _haal_kaartlagen("layerTitle", collectie=collectie)
+        namen = sorted({r.get("layerTitle") for r in rijen if r.get("layerTitle")})
+        _cache[sleutel] = (time.time(), namen)
+        return jsonify({"sublagen": namen, "uit_cache": False})
+    except Exception:
+        logger.error("Fout in api-sublagen: %s", traceback.format_exc())
+        return jsonify({"error": "Sublagen konden niet worden opgehaald."}), 502
+
 
 # ──────────────────────────────────────────────
 # API: Kolomnamen (Fix voor SSRF alert #6)

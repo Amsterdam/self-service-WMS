@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step done"><span class="step-num">✓</span> Publicatie</div>
+  <span class="step-arrow">›</span>
+  <div class="step active"><span class="step-num">2</span> Kaartlaag</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">3</span> WMS</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">4</span> Klaar</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Detailpagina en zichtbaarheid</h2>
+    <p class="subtitle">
+      Drie vragen over hoe de kaartlaag zich gedraagt op data.amsterdam.nl.
+    </p>
+  </div>
+
+  <div class="card-body">
+
+    <!-- ── 1. Detailpagina ────────────────────── -->
+    <div class="section-label">Detailpagina</div>
+    <p class="veld-uitleg">
+      Een detailpagina toont de gegevens van één object als de gebruiker erop klikt op de kaart.
+      Wilt u zo'n pagina voor deze kaartlaag?
+    </p>
+
+    <div class="ja-nee">
+      <button class="keus-btn" id="detail-nee" onclick="zetDetail(false)">
+        <span class="keus-teken">✕</span> Nee
+      </button>
+      <button class="keus-btn" id="detail-ja" onclick="zetDetail(true)">
+        <span class="keus-teken">✓</span> Ja
+      </button>
+    </div>
+
+    <div id="attributen-blok" style="display:none;">
+      <div class="section-label" style="margin-top:24px;">Attributen op de detailpagina</div>
+      <p class="veld-uitleg">
+        Vink de attributen aan die relevant zijn om te tonen. De naam achter het vinkje is het
+        label dat de gebruiker ziet. Waar het Amsterdams Schema een <code>title</code> heeft,
+        is die al ingevuld.
+      </p>
+
+      <div class="attr-acties">
+        <button class="mini-btn" onclick="zetAlle(true)">Alles aanvinken</button>
+        <button class="mini-btn" onclick="zetAlle(false)">Alles uitvinken</button>
+        <span class="attr-teller" id="attr-teller"></span>
+      </div>
+
+      <div class="attr-lijst" id="attr-lijst"></div>
+    </div>
+
+    <!-- ── 2. Activeerbaarheid ────────────────── -->
+    <div class="section-label" style="margin-top:36px;">Activeerbaarheid</div>
+    <p class="veld-uitleg">
+      Bij <strong>ja</strong> kan de gebruiker deze kaartlaag los aan- en uitzetten in de legenda.
+      Bij <strong>nee</strong> wordt de laag alleen meegetoond met de sublaag waar hij onder valt.
+    </p>
+
+    <div class="ja-nee">
+      <button class="keus-btn" id="activeer-nee" onclick="zetActiveer(false)">
+        <span class="keus-teken">✕</span> Nee
+      </button>
+      <button class="keus-btn" id="activeer-ja" onclick="zetActiveer(true)">
+        <span class="keus-teken">✓</span> Ja
+      </button>
+    </div>
+
+    <!-- ── 3. Publieke toegang ────────────────── -->
+    <div class="section-label" style="margin-top:36px;">Publieke toegang</div>
+    <p class="veld-uitleg">
+      Bij <strong>nee</strong> zien inwoners de kaartlaag niet; medewerkers van de gemeente wel,
+      na inloggen. Dit staat los van de autorisatie op de data zelf, die uit het Amsterdams
+      Schema komt en hier altijd openbaar is.
+    </p>
+
+    <div class="ja-nee">
+      <button class="keus-btn" id="publiek-nee" onclick="zetPubliek(false)">
+        <span class="keus-teken">✕</span> Nee
+      </button>
+      <button class="keus-btn" id="publiek-ja" onclick="zetPubliek(true)">
+        <span class="keus-teken">✓</span> Ja
+      </button>
+    </div>
+
+    <div id="fout" class="error-msg" style="display:none;"></div>
+
+    <div class="btn-row">
+      <a href="/publicatie/kaartlaag" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Vorige
+      </a>
+      <button id="btn-next" class="btn btn-primary" onclick="volgende()" disabled
+              style="opacity:.4; cursor:not-allowed;">
+        Verder
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .veld-uitleg { font-size: 13px; color: var(--ink-3); line-height: 1.6; margin-bottom: 14px; max-width: 620px; }
+  .veld-uitleg code {
+    font-family: var(--font-mono); font-size: 12px;
+    background: var(--surface); padding: 1px 5px; border-radius: 3px;
+  }
+
+  .ja-nee { display: flex; gap: 10px; }
+  .keus-btn {
+    width: 110px; height: 44px;
+    border: 1.5px solid var(--border);
+    background: var(--white);
+    color: var(--ink-2);
+    border-radius: var(--radius);
+    font-family: var(--font-body);
+    font-size: 14px; font-weight: 500;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .keus-teken { font-size: 13px; }
+  .keus-btn.aan-ja {
+    border-color: var(--red); background: #fff8f8;
+    color: var(--red); font-weight: 600;
+  }
+  .keus-btn.aan-nee {
+    border-color: var(--ink-3); background: var(--surface);
+    color: var(--ink); font-weight: 600;
+  }
+
+  .attr-acties { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .mini-btn {
+    height: 30px; padding: 0 12px;
+    border: 1.5px solid var(--border); background: var(--white);
+    border-radius: var(--radius); cursor: pointer;
+    font-family: var(--font-body); font-size: 12.5px; color: var(--ink-2);
+  }
+  .mini-btn:hover { background: var(--surface); }
+  .attr-teller { font-size: 12px; color: var(--ink-3); margin-left: auto; }
+
+  .attr-lijst {
+    border: 1.5px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; max-width: 680px;
+  }
+  .attr-rij {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 14px; border-bottom: 1px solid #f0f0f0;
+  }
+  .attr-rij:last-child { border-bottom: none; }
+  .attr-rij.aan { background: #fafcff; }
+  .attr-vink {
+    width: 17px; height: 17px; flex-shrink: 0; cursor: pointer;
+    border: 2px solid var(--border); border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: transparent;
+  }
+  .attr-rij.aan .attr-vink {
+    background: #004699; border-color: #004699; color: #fff;
+  }
+  .attr-naam {
+    font-family: var(--font-mono); font-size: 12px; color: var(--ink-3);
+    width: 190px; flex-shrink: 0; word-break: break-all;
+  }
+  .attr-label-veld {
+    flex: 1; height: 34px; padding: 0 10px;
+    border: 1.5px solid var(--border); border-radius: var(--radius);
+    font-family: var(--font-body); font-size: 13px; color: var(--ink);
+    outline: none; min-width: 120px;
+  }
+  .attr-label-veld:focus { border-color: var(--red); }
+  .attr-label-veld:disabled { background: var(--surface); color: var(--ink-3); }
+  .bron-tag {
+    font-size: 10.5px; font-weight: 600; color: #004699;
+    background: #e8f0fb; padding: 2px 7px; border-radius: 3px;
+    flex-shrink: 0; letter-spacing: .02em;
+  }
+</style>
+<script>
+  const publicatie = JSON.parse(sessionStorage.getItem('wms_publicatie') || '{}');
+  const attributen = publicatie.attributen || [];
+
+  let detailAan   = null;
+  let activeerAan = null;
+  let publiekAan  = null;
+  let keuzes      = {};   // kolom -> { aan: bool, label: string }
+
+  function leesbaar(naam) {
+    const s = naam.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_]+/g, ' ');
+    return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  }
+
+  // ── Attributenlijst ───────────────────────────
+  function renderAttributen() {
+    const el = document.getElementById('attr-lijst');
+    if (attributen.length === 0) {
+      el.innerHTML = `<div style="padding:18px 14px; font-size:13px; color:var(--ink-3);">
+        Geen attributen gevonden. Haal de gegevens op pagina 2 opnieuw op.</div>`;
+      return;
+    }
+
+    el.innerHTML = attributen.map(a => {
+      const k   = keuzes[a.kolom] || { aan: false, label: a.titel || '' };
+      const tag = a.heeft_titel ? '<span class="bron-tag">uit schema</span>' : '';
+      return `
+        <div class="attr-rij ${k.aan ? 'aan' : ''}" data-kolom="${a.kolom}">
+          <span class="attr-vink" onclick="wisselAttr('${a.kolom}')">✓</span>
+          <span class="attr-naam">${a.naam}</span>
+          <input type="text" class="attr-label-veld"
+                 value="${(k.label || '').replace(/"/g, '&quot;')}"
+                 placeholder="${leesbaar(a.naam).replace(/"/g, '&quot;')}"
+                 ${k.aan ? '' : 'disabled'}
+                 oninput="zetLabel('${a.kolom}', this.value)"/>
+          ${tag}
+        </div>`;
+    }).join('');
+
+    const aantal = Object.values(keuzes).filter(k => k.aan).length;
+    document.getElementById('attr-teller').textContent =
+      `${aantal} van ${attributen.length} aangevinkt`;
+  }
+
+  function wisselAttr(kolom) {
+    const attr = attributen.find(a => a.kolom === kolom);
+    const huidig = keuzes[kolom] || { aan: false, label: attr.titel || '' };
+    huidig.aan = !huidig.aan;
+    if (huidig.aan && !huidig.label) huidig.label = attr.titel || leesbaar(attr.naam);
+    keuzes[kolom] = huidig;
+    renderAttributen();
+    werkBij();
+  }
+
+  function zetLabel(kolom, waarde) {
+    if (!keuzes[kolom]) keuzes[kolom] = { aan: true, label: '' };
+    keuzes[kolom].label = waarde;
+    werkBij();
+  }
+
+  function zetAlle(aan) {
+    attributen.forEach(a => {
+      keuzes[a.kolom] = {
+        aan: aan,
+        label: (keuzes[a.kolom] && keuzes[a.kolom].label) || a.titel || leesbaar(a.naam),
+      };
+    });
+    renderAttributen();
+    werkBij();
+  }
+
+  // ── De drie vragen ────────────────────────────
+  function zetDetail(ja) {
+    detailAan = ja;
+    document.getElementById('detail-ja').className  = 'keus-btn' + (ja  ? ' aan-ja'  : '');
+    document.getElementById('detail-nee').className = 'keus-btn' + (!ja ? ' aan-nee' : '');
+    document.getElementById('attributen-blok').style.display = ja ? 'block' : 'none';
+    if (ja) renderAttributen();
+    werkBij();
+  }
+
+  function zetActiveer(ja) {
+    activeerAan = ja;
+    document.getElementById('activeer-ja').className  = 'keus-btn' + (ja  ? ' aan-ja'  : '');
+    document.getElementById('activeer-nee').className = 'keus-btn' + (!ja ? ' aan-nee' : '');
+    werkBij();
+  }
+
+  function zetPubliek(ja) {
+    publiekAan = ja;
+    document.getElementById('publiek-ja').className  = 'keus-btn' + (ja  ? ' aan-ja'  : '');
+    document.getElementById('publiek-nee').className = 'keus-btn' + (!ja ? ' aan-nee' : '');
+    werkBij();
+  }
+
+  function werkBij() {
+    const drieBeantwoord = detailAan !== null && activeerAan !== null && publiekAan !== null;
+    const attrOk = !detailAan || Object.values(keuzes).some(k => k.aan);
+    const compleet = drieBeantwoord && attrOk;
+
+    const btn = document.getElementById('btn-next');
+    btn.disabled = !compleet;
+    btn.style.opacity = compleet ? '1' : '.4';
+    btn.style.cursor  = compleet ? 'pointer' : 'not-allowed';
+
+    if (drieBeantwoord && !attrOk) {
+      document.getElementById('fout').textContent =
+        'Vink minstens één attribuut aan voor de detailpagina.';
+      document.getElementById('fout').style.display = 'block';
+    } else {
+      document.getElementById('fout').style.display = 'none';
+    }
+  }
+
+  function volgende() {
+    const gekozen = attributen
+      .filter(a => keuzes[a.kolom] && keuzes[a.kolom].aan)
+      .map(a => ({
+        naam:  a.naam,
+        kolom: a.kolom,
+        label: (keuzes[a.kolom].label || '').trim() || a.titel || leesbaar(a.naam),
+      }));
+
+    sessionStorage.setItem('wms_detailpagina', JSON.stringify({
+      aan: detailAan,
+      attributen: detailAan ? gekozen : [],
+    }));
+    sessionStorage.setItem('wms_eigenschappen', JSON.stringify({
+      activeerbaar: activeerAan,
+      publiek: publiekAan,
+    }));
+
+    window.location.href = '/publicatie/samenvatting';
+  }
+
+  // ── Herstel bij terugnavigatie ────────────────
+  (function herstel() {
+    const d = JSON.parse(sessionStorage.getItem('wms_detailpagina') || '{}');
+    const e = JSON.parse(sessionStorage.getItem('wms_eigenschappen') || '{}');
+
+    if (Array.isArray(d.attributen)) {
+      d.attributen.forEach(a => { keuzes[a.kolom] = { aan: true, label: a.label }; });
+    }
+    if (d.aan === true || d.aan === false) zetDetail(d.aan);
+    if (e.activeerbaar === true || e.activeerbaar === false) zetActiveer(e.activeerbaar);
+    if (e.publiek === true || e.publiek === false) zetPubliek(e.publiek);
+    werkBij();
+  })();
+</script>
+{% endblock %}

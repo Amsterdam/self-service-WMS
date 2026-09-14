@@ -90,6 +90,14 @@
       </div>
 
       <div class="btn-row">
+        <a href="/publicatie/samenvatting" id="btn-terug-kaartlaag"
+           class="btn btn-secondary" style="display:none;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Vorige
+        </a>
         <button type="submit" class="btn btn-primary">
           Volgende
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -108,6 +116,20 @@
 <script>
   // Herstel opgeslagen waarden bij terugnavigatie
   const saved = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
+
+  // Komt de gebruiker via de publicatieroute? Dan is de laagnaam al bepaald
+  // op pagina 3 (de kaartlaagnaam) en wordt die hier voorgevuld.
+  const kaartlaag = JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}');
+  if (kaartlaag.kaartlaag) {
+    saved.wms_laagnaam = kaartlaag.kaartlaag;
+    document.getElementById('btn-terug-kaartlaag').style.display = 'inline-flex';
+
+    const veld = document.getElementById('wms_laagnaam');
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:12px; color:var(--step-done); margin-top:6px;';
+    hint.textContent = 'Overgenomen uit de kaartlaagnaam. U kunt hem hier nog aanpassen.';
+    veld.parentNode.appendChild(hint);
+  }
   if (saved.mapfile_naam)   document.getElementById('mapfile_naam').value   = saved.mapfile_naam;
   if (saved.wms_groepsnaam) document.getElementById('wms_groepsnaam').value = saved.wms_groepsnaam;
   if (saved.wms_laagnaam)   document.getElementById('wms_laagnaam').value   = saved.wms_laagnaam;
