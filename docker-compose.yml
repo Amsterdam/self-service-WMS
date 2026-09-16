@@ -1,0 +1,26 @@
+services:
+  wms:
+    build: .
+    image: self-service-wms:latest
+    container_name: self-service-wms
+    ports:
+      - "5000:5000"
+    environment:
+      # Verplicht in productie: zet hier een eigen willekeurige waarde.
+      # Genereren kan met: python -c "import secrets; print(secrets.token_hex(32))"
+      SECRET_KEY: "${SECRET_KEY:-verander-dit-in-productie}"
+
+      # Binnen het gemeentenetwerk loopt uitgaand verkeer vaak via een proxy.
+      # Haal het commentaar weg en vul het juiste adres in als dat zo is.
+      # HTTP_PROXY:  "http://proxy.amsterdam.nl:8080"
+      # HTTPS_PROXY: "http://proxy.amsterdam.nl:8080"
+      # NO_PROXY:    "localhost,127.0.0.1"
+    restart: unless-stopped
+
+    # De app schrijft niets naar schijf, dus er zijn geen volumes nodig.
+    # Wel een read-only rootfs met een tmpfs voor /tmp, voor de zekerheid.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

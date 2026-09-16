@@ -181,7 +181,30 @@
     padding: 9px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13.5px;
   }
   .aanvr-rij:last-child { border-bottom: none; }
+  .aanvr-rij.kolom { flex-direction: column; align-items: stretch; gap: 10px; }
   .aanvr-vraag { color: var(--ink-2); flex: 1; min-width: 200px; }
+
+  /* Attributen als tabel in plaats van een lange opsomming */
+  table.attr-tabel {
+    width: 100%; border-collapse: collapse;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; background: var(--white);
+  }
+  table.attr-tabel th {
+    text-align: left; padding: 7px 12px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--ink-3);
+  }
+  table.attr-tabel td {
+    padding: 7px 12px; border-bottom: 1px solid #f0f0f0;
+    font-size: 13px; color: var(--ink); vertical-align: top;
+  }
+  table.attr-tabel tr:last-child td { border-bottom: none; }
+  table.attr-tabel td.mono {
+    font-family: var(--font-mono); font-size: 12px; color: var(--ink-3);
+    width: 45%; word-break: break-all;
+  }
   .aanvr-antw  { font-weight: 600; color: var(--ink); text-align: right; flex-shrink: 0; max-width: 55%; }
   .aanvr-antw.mono { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; word-break: break-all; }
   .aanvr-nieuw {
@@ -464,14 +487,11 @@
     return 'Niet opgegeven';
   }
 
-  // De vragen zoals ze in de tool aan de gebruiker gesteld zijn
-  function vragenEnAntwoorden(d) {
-    const attrLijst = (d.detail.attributen || [])
-      .map(a => `${a.label} (${a.kolom})`).join(', ');
-    const filter = d.step3.filter_aan
-      ? `Ja, ${d.step3.filter_kolom} = '${d.step3.filter_waarde}'`
-      : 'Nee';
-
+  // ── De publicatievragen zoals ze aan de gebruiker gesteld zijn ──
+  // Alleen wat de gebruiker daadwerkelijk heeft geantwoord. De technische
+  // MapFile-instellingen staan uitsluitend in mapfileGegevens(), zodat
+  // dezelfde waarde niet in twee secties terechtkomt.
+  function publicatieVragen(d) {
     return [
       { groep: 'Publicatie',
         vraag: 'Wilt u een dataset op de kaart van data.amsterdam.nl publiceren of alleen een WMS maken?',
@@ -497,34 +517,69 @@
         antwoord: jaNee(d.detail.aan) },
       { groep: 'Detailpagina',
         vraag: 'Welke attributen worden op de detailpagina getoond?',
-        antwoord: d.detail.aan ? (attrLijst || 'Geen') : 'Niet van toepassing' },
+        // Het antwoord is een tabel: attribuutnaam naast de weergavenaam
+        tabel: d.detail.aan ? (d.detail.attributen || []) : null,
+        antwoord: d.detail.aan ? null : 'Niet van toepassing' },
       { groep: 'Zichtbaarheid',
         vraag: 'Moet de kaartlaag activeerbaar zijn?',
         antwoord: jaNee(d.eigen.activeerbaar) },
       { groep: 'Zichtbaarheid',
         vraag: 'Mag de kaartlaag voor het publiek toegankelijk zijn?',
         antwoord: jaNee(d.eigen.publiek) },
-      { groep: 'WMS',
-        vraag: 'Wat is de naam van de MapFile?',
-        antwoord: d.step1.mapfile_naam || 'Niet opgegeven', mono: true },
-      { groep: 'WMS',
-        vraag: 'Wat is de WMS-groepsnaam?',
-        antwoord: d.step1.wms_groepsnaam || 'Niet opgegeven', mono: true },
-      { groep: 'WMS',
-        vraag: 'Welke databasetabel wordt gebruikt?',
-        antwoord: d.step2.table_name || 'Niet opgegeven', mono: true },
-      { groep: 'WMS',
-        vraag: 'Wat is het geometrietype?',
-        antwoord: d.step2.geometryType || 'Niet opgegeven', mono: true },
-      { groep: 'WMS',
-        vraag: 'Is er een filter op de data?',
-        antwoord: filter },
-      { groep: 'WMS',
-        vraag: 'Welke kleur krijgt de laag?',
-        antwoord: d.step3.color || 'Niet opgegeven', mono: true },
-      { groep: 'WMS',
-        vraag: 'Is er een label op de kaart?',
-        antwoord: d.step3.label_aan ? (d.step3.label_kolom || 'Ja') : 'Nee' },
+    ];
+  }
+
+  // ── De technische MapFile-gegevens ────────────
+  function mapfileGegevens(d) {
+    return {
+      naam:           d.step1.mapfile_naam   || '',
+      wms_groepsnaam: d.step1.wms_groepsnaam || '',
+      bron: {
+        dataset_titel:      d.publicatie.dataset_title || '',
+        dataset_id:         d.publicatie.dataset_id    || '',
+        tabel_id:           d.publicatie.tabel_id      || '',
+        team:               d.step2.publisher   || '',
+        autorisatie_data:   d.step2.auth        || '',
+        schema_tabel_url:   d.step2.url_tabel   || '',
+        schema_dataset_url: d.step2.url_dataset || '',
+        dso_api_url:        d.step2.url_api     || '',
+      },
+      // Lijst, zodat een tweede kaartlaag hier later bij kan
+      lagen: [
+        {
+          layer_name:     d.kaartlaag.kaartlaag || d.step1.wms_laagnaam || '',
+          databasetabel:  d.step2.table_name   || '',
+          geometriekolom: d.step2.mainGeometry || '',
+          geometrietype:  d.step2.geometryType || '',
+          uniek_id:       d.step2.unique_id    || '',
+          crs:            d.step2.crs          || '',
+          kleur:          d.step3.color        || '',
+          filter: d.step3.filter_aan
+            ? { kolom: d.step3.filter_kolom, waarde: d.step3.filter_waarde }
+            : null,
+          label_kolom: d.step3.label_aan ? (d.step3.label_kolom || '') : null,
+        },
+      ],
+    };
+  }
+
+  // Dezelfde MapFile-gegevens, maar als leesbare regels voor het scherm
+  function mapfileRegels(mf) {
+    const l = mf.lagen[0] || {};
+    return [
+      { vraag: 'Naam van de MapFile',   antwoord: mf.naam || '—', mono: true },
+      { vraag: 'WMS-groepsnaam',        antwoord: mf.wms_groepsnaam || '—', mono: true },
+      { vraag: 'LAYER NAME',            antwoord: l.layer_name || '—', mono: true },
+      { vraag: 'Databasetabel',         antwoord: l.databasetabel || '—', mono: true },
+      { vraag: 'Geometriekolom',        antwoord: l.geometriekolom || '—', mono: true },
+      { vraag: 'Geometrietype',         antwoord: l.geometrietype || '—', mono: true },
+      { vraag: 'Uniek ID-veld',         antwoord: l.uniek_id || '—', mono: true },
+      { vraag: 'Coördinaatstelsel',     antwoord: l.crs || '—', mono: true },
+      { vraag: 'Kleur',                 antwoord: l.kleur || '—', mono: true },
+      { vraag: 'Filter op de data',     antwoord: l.filter
+          ? `${l.filter.kolom} = '${l.filter.waarde}'` : 'Geen', mono: !!l.filter },
+      { vraag: 'Label op de kaart',     antwoord: l.label_kolom || 'Geen',
+          mono: !!l.label_kolom },
     ];
   }
 
@@ -537,27 +592,53 @@
       return;
     }
 
-    const qa = vragenEnAntwoorden(d);
-    const groepen = ['Publicatie', 'Detailpagina', 'Zichtbaarheid', 'WMS'];
-
-    let html = '';
-    groepen.forEach(g => {
-      const items = qa.filter(q => q.groep === g);
-      if (!items.length) return;
-      html += `<div class="aanvr-groep">${g}</div><div class="aanvr-tabel">`;
-      items.forEach(q => {
-        let antw = escHtml(q.antwoord);
-        if (q.antwoord === 'Ja')  antw = `<span class="aanvr-ja">Ja</span>`;
-        if (q.antwoord === 'Nee') antw = `<span class="aanvr-nee">Nee</span>`;
-        html += `
-          <div class="aanvr-rij">
+    function rijHtml(q) {
+      // Een antwoord dat uit een tabel bestaat, krijgt zijn eigen opmaak
+      if (q.tabel) {
+        if (!q.tabel.length) {
+          return `<div class="aanvr-rij">
+              <span class="aanvr-vraag">${escHtml(q.vraag)}</span>
+              <span class="aanvr-antw">Geen</span></div>`;
+        }
+        return `
+          <div class="aanvr-rij kolom">
             <span class="aanvr-vraag">${escHtml(q.vraag)}</span>
-            <span class="aanvr-antw ${q.mono ? 'mono' : ''}">${antw}${
-              q.nieuw ? '<span class="aanvr-nieuw">nieuw</span>' : ''}</span>
+            <table class="attr-tabel">
+              <thead>
+                <tr><th>Attribuut naam</th><th>Weergave op frontend</th></tr>
+              </thead>
+              <tbody>
+                ${q.tabel.map(a => `<tr>
+                  <td class="mono">${escHtml(a.kolom)}</td>
+                  <td>${escHtml(a.label)}</td></tr>`).join('')}
+              </tbody>
+            </table>
           </div>`;
-      });
-      html += `</div>`;
+      }
+      let antw = escHtml(q.antwoord);
+      if (q.antwoord === 'Ja')  antw = '<span class="aanvr-ja">Ja</span>';
+      if (q.antwoord === 'Nee') antw = '<span class="aanvr-nee">Nee</span>';
+      return `
+        <div class="aanvr-rij">
+          <span class="aanvr-vraag">${escHtml(q.vraag)}</span>
+          <span class="aanvr-antw ${q.mono ? 'mono' : ''}">${antw}${
+            q.nieuw ? '<span class="aanvr-nieuw">nieuw</span>' : ''}</span>
+        </div>`;
+    }
+
+    const vragen = publicatieVragen(d);
+    let html = '';
+    ['Publicatie', 'Detailpagina', 'Zichtbaarheid'].forEach(g => {
+      const items = vragen.filter(q => q.groep === g);
+      if (!items.length) return;
+      html += `<div class="aanvr-groep">${g}</div>`;
+      html += `<div class="aanvr-tabel">${items.map(rijHtml).join('')}</div>`;
     });
+
+    // De MapFile-gegevens als eigen blok
+    html += `<div class="aanvr-groep">MapFile</div>`;
+    html += `<div class="aanvr-tabel">${
+      mapfileRegels(mapfileGegevens(d)).map(rijHtml).join('')}</div>`;
 
     document.getElementById('aanvraag-inhoud').innerHTML = html;
     document.getElementById('card-aanvraag').style.display = 'block';
@@ -569,69 +650,33 @@
   }
 
   // ── JSON-download ─────────────────────────────
+  // Twee secties zonder overlap: vragen_en_antwoorden bevat wat de gebruiker
+  // heeft geantwoord, mapfile bevat de technische gegevens.
   function bouwAanvraagJson() {
     const d = leesAanvraagData();
     return {
-      versie: '1.0',
+      versie: '2.0',
       aangemaakt: new Date().toISOString(),
-      bron: 'Self-Service WMS, Team GEO',
+      bron: 'Self-service WMS en Kaartlagen, Team DE GEO',
       route: d.route === 'publicatie'
         ? 'publicatie_op_data_amsterdam'
         : 'alleen_wms',
-      mapfile: {
-        naam:          d.step1.mapfile_naam  || '',
-        wms_groepsnaam: d.step1.wms_groepsnaam || '',
-      },
-      dataset: {
-        titel:            d.publicatie.dataset_title || '',
-        dataset_id:       d.publicatie.dataset_id    || '',
-        tabel_id:         d.publicatie.tabel_id      || '',
-        thema:            d.publicatie.themes        || [],
-        schema_tabel_url: d.step2.url_tabel   || '',
-        schema_dataset_url: d.step2.url_dataset || '',
-        dso_api_url:      d.step2.url_api     || '',
-        databasetabel:    d.step2.table_name  || '',
-        team:             d.step2.publisher   || '',
-        crs:              d.step2.crs         || '',
-        autorisatie_data: d.step2.auth        || '',
-      },
-      // Lijst, zodat een tweede kaartlaag hier later bij kan
-      kaartlagen: [
-        {
-          collectie: {
-            naam:  d.kaartlaag.collectie || '',
-            nieuw: !!d.kaartlaag.collectie_nieuw,
-          },
-          sublaag: {
-            naam:  d.kaartlaag.sublaag || '',
-            nieuw: !!d.kaartlaag.sublaag_nieuw,
-          },
-          kaartlaag:       d.kaartlaag.kaartlaag || '',
-          kaartlaag_label: d.kaartlaag.kaartlaag_label || '',
-          detailpagina: {
-            gewenst:    d.detail.aan === true,
-            attributen: d.detail.attributen || [],
-          },
-          activeerbaar:       d.eigen.activeerbaar,
-          publiek_toegankelijk: d.eigen.publiek,
-          wms: {
-            geometriekolom: d.step2.mainGeometry || '',
-            geometrietype:  d.step2.geometryType || '',
-            uniek_id:       d.step2.unique_id    || '',
-            kleur:          d.step3.color        || '',
-            filter: d.step3.filter_aan
-              ? { kolom: d.step3.filter_kolom, waarde: d.step3.filter_waarde }
-              : null,
-            label_kolom: d.step3.label_aan ? (d.step3.label_kolom || '') : null,
-          },
-        },
-      ],
-      vragen_en_antwoorden: vragenEnAntwoorden(d).map(q => ({
-        groep:    q.groep,
-        vraag:    q.vraag,
-        antwoord: q.antwoord,
-        nieuw:    q.nieuw || false,
-      })),
+
+      vragen_en_antwoorden: publicatieVragen(d).map(q => {
+        const item = { groep: q.groep, vraag: q.vraag };
+        if (q.tabel) {
+          item.antwoord_tabel = {
+            kolommen: ['attribuut_naam', 'weergave_op_frontend'],
+            rijen: q.tabel.map(a => [a.kolom, a.label]),
+          };
+        } else {
+          item.antwoord = q.antwoord;
+        }
+        if (q.nieuw) item.nieuw = true;
+        return item;
+      }),
+
+      mapfile: mapfileGegevens(d),
     };
   }
 

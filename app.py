@@ -1,5 +1,7 @@
+import os
 import re
 import time
+import secrets
 import logging
 import traceback
 from urllib.parse import urlparse
@@ -58,11 +60,16 @@ def extract_dso_path(url: str) -> str:
     return f"{DSO_API_BASE}{path}"
 
 app = Flask(__name__)
-app.secret_key = "wms-secret-key-2024"
+# Geheime sleutel uit de omgeving; alleen een tijdelijke fallback voor lokaal draaien.
+# De Flask-session wordt nu niet gebruikt, maar Flask wil wel een sleutel hebben.
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # ──────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────
+
+@app.route("/healthz")
+def healthz(): return {"status": "ok"}, 200
 
 @app.route("/")
 def intro(): return render_template("intro.html")
@@ -107,6 +114,49 @@ def to_title_case(name: str) -> str:
     """Vervangt underscores door spaties en capitaliseert elk woord.
     bijv. canon_amsterdam → Canon Amsterdam"""
     return ' '.join(w.capitalize() for w in name.replace('_', ' ').split())
+
+
+def _versienummer(v) -> int:
+    """v12 -> 12, zodat versies op nummer vergeleken kunnen worden."""
+    m = re.match(r"v(\d+)", str(v))
+    return int(m.group(1)) if m else -1
+
+
+def bepaal_dataset_versie(ds_json: dict, tabel_map: str, tabel_versie: str) -> str:
+    """
+    Zoekt de datasetversie waaronder een tabelversie valt.
+
+    In dataset.json staat per datasetversie een lijst tabellen met een
+    $ref als "parken/v3". Een tabelversie kan onder meerdere
+    datasetversies hangen; dan beslist deze volgorde:
+      1. de defaultVersion van de dataset
+      2. anders de hoogste versie met status "stable"
+      3. anders de hoogste versie
+    Wordt de tabel nergens gevonden, dan valt het terug op defaultVersion.
+    """
+    gezocht  = f"{tabel_map}/{tabel_versie}"
+    versions = ds_json.get("versions") or {}
+    standaard = ds_json.get("defaultVersion")
+
+    kandidaten = []
+    for versie_naam, blok in versions.items():
+        if not isinstance(blok, dict):
+            continue
+        for tabel in blok.get("tables", []):
+            if isinstance(tabel, dict) and tabel.get("$ref") == gezocht:
+                kandidaten.append((versie_naam, blok.get("status", "")))
+                break
+
+    if not kandidaten:
+        return standaard or "v1"
+
+    namen = [vn for vn, _ in kandidaten]
+    if standaard in namen:
+        return standaard
+    stabiel = [vn for vn, status in kandidaten if status == "stable"]
+    if stabiel:
+        return max(stabiel, key=_versienummer)
+    return max(namen, key=_versienummer)
 
 
 def is_openbaar(auth_val):
@@ -285,14 +335,20 @@ def fetch_data():
             })
 
         # ── 6. DSO API URL afleiden uit het schemapad ─────────────────────
-        # .../datasets/varen/ligplaats/v1.json
-        #  → https://api.data.amsterdam.nl/v1/varen/v1/ligplaats
+        # Let op: de versie in het API-pad is de DATASETversie, niet de
+        # tabelversie. Welke datasetversie bij deze tabelversie hoort staat
+        # in dataset.json onder "versions", als $ref "<tabelmap>/<vN>".
+        #   datasets/sport/parken/v3.json
+        #    -> versions.v2.tables bevat "parken/v3"
+        #    -> https://api.data.amsterdam.nl/v1/sport/v2/parken
         url_api_afgeleid = ""
-        m_api = re.search(r"/datasets/([^/]+)/([^/]+)/v(\d+)\.json", url_tabel_raw)
+        m_api = re.search(r"/datasets/([^/]+)/([^/]+)/(v\d+)\.json", url_tabel_raw)
         if m_api:
+            ds_map, tabel_map, tabel_versie = m_api.groups()
+            ds_versie = bepaal_dataset_versie(ds_json, tabel_map, tabel_versie)
+            ds_pad    = to_snake_case(dataset_id) or ds_map
             url_api_afgeleid = (
-                f"{DSO_API_BASE}/v1/{m_api.group(1)}"
-                f"/v{m_api.group(3)}/{to_snake_case(tabel_id)}"
+                f"{DSO_API_BASE}/v1/{ds_pad}/{ds_versie}/{to_snake_case(tabel_id)}"
             )
 
         return jsonify({
@@ -693,4 +749,8 @@ def generate_mapfile():
 
 if __name__ == "__main__":
     # Fix voor Debug Mode alert: debug=False
-    app.run(debug=False, port=5000)
+    app.run(
+        debug=False,
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "5000")),
+    )
