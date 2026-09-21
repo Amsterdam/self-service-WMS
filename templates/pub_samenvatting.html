@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step done"><span class="step-num">✓</span> Publicatie</div>
+  <span class="step-arrow">›</span>
+  <div class="step active"><span class="step-num">2</span> Kaartlaag</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">3</span> WMS</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">4</span> Klaar</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Controleer uw antwoorden</h2>
+    <p class="subtitle">
+      Dit is de aanvraag voor publicatie op data.amsterdam.nl. Klopt er iets niet, ga dan
+      terug naar de betreffende stap. Daarna maakt u de WMS aan.
+    </p>
+  </div>
+
+  <div class="card-body">
+
+    <div class="section-label">Dataset</div>
+    <div class="ov-tabel" id="ov-dataset"></div>
+
+    <div class="section-label">Plaats in de kaartlagenkiezer</div>
+    <div class="ov-boom" id="ov-indeling"></div>
+
+    <div class="section-label">Detailpagina</div>
+    <div id="ov-detail"></div>
+
+    <div class="section-label">Zichtbaarheid</div>
+    <div class="ov-tabel" id="ov-zicht"></div>
+
+    <div id="fout" class="error-msg" style="display:none;"></div>
+
+    <div class="btn-row">
+      <a href="/publicatie/eigenschappen" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Vorige
+      </a>
+      <button class="btn btn-primary" onclick="naarWms()">
+        Verder naar de WMS
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .ov-tabel {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; max-width: 680px;
+  }
+  .ov-rij {
+    display: flex; gap: 14px; align-items: baseline;
+    padding: 9px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13.5px;
+  }
+  .ov-rij:last-child { border-bottom: none; }
+  .ov-sleutel { font-weight: 600; color: var(--ink-2); min-width: 190px; flex-shrink: 0; }
+  .ov-waarde  { color: var(--ink); }
+  .ov-waarde.mono { font-family: var(--font-mono); font-size: 12.5px; word-break: break-all; }
+
+  .ov-boom {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 20px;
+    font-size: 14px; line-height: 2.1; color: var(--ink); max-width: 680px;
+  }
+  .ov-boom .lbl { color: var(--ink-3); }
+  .nieuw-tag {
+    font-size: 11px; color: #004699; font-weight: 600;
+    background: #e8f0fb; padding: 2px 8px; border-radius: 3px; margin-left: 8px;
+  }
+
+  .thema-pil {
+    display: inline-block; background: #e8f0fb; color: #004699;
+    font-size: 12px; font-weight: 600; padding: 2px 9px;
+    border-radius: 3px; margin: 0 5px 3px 0;
+  }
+
+  .attr-tabel {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; max-width: 680px;
+  }
+  .attr-kop {
+    display: flex; gap: 14px; padding: 7px 16px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--ink-3);
+  }
+  .attr-r { display: flex; gap: 14px; padding: 8px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .attr-r:last-child { border-bottom: none; }
+  .attr-k1 { width: 200px; flex-shrink: 0; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); }
+  .attr-k2 { flex: 1; color: var(--ink); }
+
+  .geen-regel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 16px;
+    font-size: 13.5px; color: var(--ink-2); max-width: 680px;
+  }
+  .vlag { font-weight: 600; }
+  .vlag.ja  { color: var(--step-done); }
+  .vlag.nee { color: var(--red); }
+</style>
+<script>
+  const step2       = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
+  const publicatie  = JSON.parse(sessionStorage.getItem('wms_publicatie') || '{}');
+  const kaartlaag   = JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}');
+  const detail      = JSON.parse(sessionStorage.getItem('wms_detailpagina') || '{}');
+  const eigen       = JSON.parse(sessionStorage.getItem('wms_eigenschappen') || '{}');
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function rijen(doel, lijst) {
+    document.getElementById(doel).innerHTML = lijst.map(r => `
+      <div class="ov-rij">
+        <span class="ov-sleutel">${r.k}</span>
+        <span class="ov-waarde ${r.mono ? 'mono' : ''}">${r.raw ? r.v : esc(r.v)}</span>
+      </div>`).join('');
+  }
+
+  // ── Ontbrekende gegevens opvangen ─────────────
+  if (!step2.table_name || !kaartlaag.kaartlaag) {
+    document.getElementById('fout').innerHTML =
+      'Er ontbreken gegevens uit de eerdere stappen. ' +
+      '<a href="/publicatie/schema" style="color:var(--red)">Begin opnieuw bij stap 2</a>.';
+    document.getElementById('fout').style.display = 'block';
+  }
+
+  // ── Dataset ───────────────────────────────────
+  const themaHtml = (publicatie.themes || []).length
+    ? publicatie.themes.map(t => `<span class="thema-pil">${esc(t)}</span>`).join('')
+    : '<span style="color:var(--ink-3)">geen thema in dataset.json</span>';
+
+  rijen('ov-dataset', [
+    { k: 'Dataset',            v: publicatie.dataset_title || '—' },
+    { k: 'Thema',              v: themaHtml, raw: true },
+    { k: 'Team',               v: step2.publisher || '—' },
+    { k: 'Databasetabel',      v: step2.table_name || '—', mono: true },
+    { k: 'Geometrietype',      v: step2.geometryType || '—', mono: true },
+    { k: 'Coördinaatstelsel',  v: step2.crs || '—', mono: true },
+    { k: 'Autorisatie data',   v: step2.auth || '—', mono: true },
+  ]);
+
+  // ── Indeling ──────────────────────────────────
+  const nieuwTag = '<span class="nieuw-tag">nieuw</span>';
+  document.getElementById('ov-indeling').innerHTML = `
+    <div><span class="lbl">Collectie</span> <strong>${esc(kaartlaag.collectie || '—')}</strong>
+      ${kaartlaag.collectie_nieuw ? nieuwTag : ''}</div>
+    <div style="padding-left:20px;"><span class="lbl">Sublaag</span>
+      <strong>${esc(kaartlaag.sublaag || '—')}</strong>
+      ${kaartlaag.sublaag_nieuw ? nieuwTag : ''}</div>
+    <div style="padding-left:40px;"><span class="lbl">Kaartlaag</span>
+      <strong style="font-family:var(--font-mono); font-size:13px;">${esc(kaartlaag.kaartlaag || '—')}</strong></div>`;
+
+  // ── Detailpagina ──────────────────────────────
+  const attrs = detail.attributen || [];
+  if (detail.aan && attrs.length) {
+    document.getElementById('ov-detail').innerHTML = `
+      <div class="attr-tabel">
+        <div class="attr-kop"><span class="attr-k1">Attribuut</span><span class="attr-k2">Label op de pagina</span></div>
+        ${attrs.map(a => `
+          <div class="attr-r">
+            <span class="attr-k1">${esc(a.kolom)}</span>
+            <span class="attr-k2">${esc(a.label)}</span>
+          </div>`).join('')}
+      </div>`;
+  } else {
+    document.getElementById('ov-detail').innerHTML =
+      `<div class="geen-regel">Geen detailpagina voor deze kaartlaag.</div>`;
+  }
+
+  // ── Zichtbaarheid ─────────────────────────────
+  function vlag(waarde, jaTekst, neeTekst) {
+    if (waarde === true)  return `<span class="vlag ja">Ja</span> — ${jaTekst}`;
+    if (waarde === false) return `<span class="vlag nee">Nee</span> — ${neeTekst}`;
+    return '—';
+  }
+
+  rijen('ov-zicht', [
+    { k: 'Activeerbaar', raw: true, v: vlag(eigen.activeerbaar,
+        'los aan en uit te zetten in de legenda',
+        'wordt meegetoond met de sublaag') },
+    { k: 'Publiek toegankelijk', raw: true, v: vlag(eigen.publiek,
+        'zichtbaar voor iedereen',
+        'alleen voor medewerkers na inloggen') },
+  ]);
+
+  function naarWms() {
+    window.location.href = '/scenario1';
+  }
+</script>
+{% endblock %}

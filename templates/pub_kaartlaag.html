@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step done"><span class="step-num">✓</span> Publicatie</div>
+  <span class="step-arrow">›</span>
+  <div class="step active"><span class="step-num">2</span> Kaartlaag</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">3</span> WMS</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">4</span> Klaar</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Plaats in de kaartlagenkiezer</h2>
+    <p class="subtitle">
+      Bepaal waar de kaartlaag terechtkomt in de legenda op data.amsterdam.nl.
+      Bestaande collecties en sublagen worden opgehaald uit het kaartlagen-register.
+    </p>
+  </div>
+
+  <div class="card-body">
+
+    <!-- ── 1. Collectie ───────────────────────── -->
+    <div class="section-label">Collectie</div>
+    <p class="veld-uitleg">
+      De grijze kop in de kaartlagenkiezer, bijvoorbeeld Oplaadpunten. Kies de collectie die
+      past bij de inhoud van de dataset, of geef een nieuwe naam op.
+    </p>
+
+    <div class="wissel">
+      <button class="wissel-btn actief" id="coll-btn-bestaand"
+              onclick="zetCollModus('bestaand')">Bestaande collectie</button>
+      <button class="wissel-btn" id="coll-btn-nieuw"
+              onclick="zetCollModus('nieuw')">Nieuwe collectie</button>
+    </div>
+
+    <div id="coll-bestaand">
+      <input type="text" id="coll-zoek" class="zoekveld" placeholder="Zoeken…"
+             oninput="renderCollecties()" autocomplete="off"/>
+      <div class="keuzelijst" id="coll-lijst">
+        <div class="lijst-leeg">Collecties ophalen…</div>
+      </div>
+      <div class="lijst-teller" id="coll-teller"></div>
+    </div>
+
+    <div id="coll-nieuw" style="display:none;">
+      <input type="text" id="coll-nieuw-naam" placeholder="bijv. Laadinfrastructuur"
+             autocomplete="off" oninput="werkBij()"/>
+      <div class="veld-hint">Wordt als nieuwe categoriekop aangevraagd bij Team GEO.</div>
+    </div>
+
+    <!-- ── 2. Sublaag ─────────────────────────── -->
+    <div id="sub-sectie" class="uit">
+      <div class="section-label">Sublaag</div>
+      <p class="veld-uitleg">
+        De groep binnen de collectie waaronder de legenda-items vallen, bijvoorbeeld
+        Snel laden (&gt; 50 Kw).
+      </p>
+
+      <div id="sub-nieuw-verplicht" class="info-regel" style="display:none;">
+        Een nieuwe collectie heeft nog geen sublagen. Geef de eerste sublaagnaam op.
+      </div>
+
+      <div class="wissel" id="sub-wissel">
+        <button class="wissel-btn actief" id="sub-btn-bestaand"
+                onclick="zetSubModus('bestaand')">Bestaande sublaag</button>
+        <button class="wissel-btn" id="sub-btn-nieuw"
+                onclick="zetSubModus('nieuw')">Nieuwe sublaag</button>
+      </div>
+
+      <div id="sub-bestaand">
+        <input type="text" id="sub-zoek" class="zoekveld" placeholder="Zoeken…"
+               oninput="renderSublagen()" autocomplete="off"/>
+        <div class="keuzelijst" id="sub-lijst">
+          <div class="lijst-leeg">Kies eerst een collectie</div>
+        </div>
+        <div class="lijst-teller" id="sub-teller"></div>
+      </div>
+
+      <div id="sub-nieuw" style="display:none;">
+        <input type="text" id="sub-nieuw-naam" placeholder="bijv. Snel laden (> 50 Kw)"
+               autocomplete="off" oninput="werkBij()"/>
+      </div>
+    </div>
+
+    <!-- ── 3. Kaartlaag ───────────────────────── -->
+    <div id="kaart-sectie" class="uit">
+      <div class="section-label">Kaartlaag</div>
+      <p class="veld-uitleg">
+        Het legenda-item dat de gebruiker aan- en uitzet. Deze naam wordt ook de
+        <strong>LAYER NAME</strong> in de MapFile.
+      </p>
+      <input type="text" id="kaartlaag-naam" placeholder="bijv. Snellaadpunt beschikbaar"
+             autocomplete="off" oninput="werkBij()"/>
+      <div class="veld-hint" id="kaartlaag-hint">
+        Spaties en hoofdletters worden omgezet naar snake_case.
+      </div>
+    </div>
+
+    <!-- ── Overzicht ──────────────────────────── -->
+    <div id="overzicht" style="display:none;">
+      <div class="section-label">Indeling</div>
+      <div class="overzicht-blok">
+        <div><span class="ov-label">Collectie</span> <strong id="ov-coll"></strong>
+             <span class="nieuw-tag" id="ov-coll-nieuw" style="display:none;">nieuw</span></div>
+        <div style="padding-left:20px;"><span class="ov-label">Sublaag</span> <strong id="ov-sub"></strong>
+             <span class="nieuw-tag" id="ov-sub-nieuw" style="display:none;">nieuw</span></div>
+        <div style="padding-left:40px;"><span class="ov-label">Kaartlaag</span>
+             <strong id="ov-kaart" style="font-family:var(--font-mono); font-size:13px;"></strong></div>
+      </div>
+    </div>
+
+    <div id="fout" class="error-msg" style="display:none;"></div>
+
+    <div class="btn-row">
+      <a href="/publicatie/schema" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Vorige
+      </a>
+      <button id="btn-next" class="btn btn-primary" onclick="volgende()" disabled
+              style="opacity:.4; cursor:not-allowed;">
+        Verder
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .veld-uitleg { font-size: 13px; color: var(--ink-3); line-height: 1.55; margin-bottom: 14px; }
+  .veld-hint   { font-size: 12px; color: var(--ink-3); margin-top: 6px; line-height: 1.5; }
+
+  .wissel { display: flex; gap: 8px; margin-bottom: 14px; max-width: 420px; }
+  .wissel-btn {
+    flex: 1; height: 40px;
+    border: 1.5px solid var(--border);
+    background: var(--white);
+    color: var(--ink-2);
+    border-radius: var(--radius);
+    font-family: var(--font-body);
+    font-size: 13.5px; font-weight: 500;
+    cursor: pointer;
+  }
+  .wissel-btn.actief {
+    border-color: var(--red); background: #fff8f8;
+    color: var(--red); font-weight: 600;
+  }
+
+  .zoekveld {
+    height: 38px !important;
+    font-size: 13.5px !important;
+    margin-bottom: 8px;
+    max-width: 460px;
+  }
+  #coll-nieuw-naam, #sub-nieuw-naam, #kaartlaag-naam { max-width: 460px; }
+
+  .keuzelijst {
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    max-height: 240px; overflow-y: auto;
+    background: var(--white);
+    max-width: 460px;
+  }
+  .lijst-item {
+    padding: 10px 14px; font-size: 13.5px; cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .lijst-item:last-child { border-bottom: none; }
+  .lijst-item:hover { background: var(--surface); }
+  .lijst-item.gekozen { background: #fff8f8; color: var(--red); font-weight: 600; }
+  .lijst-bol {
+    width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .lijst-item.gekozen .lijst-bol { border-color: var(--red); }
+  .lijst-item.gekozen .lijst-bol::after {
+    content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--red);
+  }
+  .lijst-leeg { padding: 18px 14px; font-size: 13px; color: var(--ink-3); text-align: center; }
+  .lijst-teller { font-size: 11.5px; color: #aaa; margin-top: 6px; }
+
+  .uit { opacity: .45; pointer-events: none; }
+
+  .info-regel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 14px;
+    font-size: 12.5px; color: var(--ink-2); margin-bottom: 14px;
+    line-height: 1.5; max-width: 460px;
+  }
+
+  .overzicht-blok {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 20px;
+    font-size: 14px; line-height: 2.1; color: var(--ink);
+  }
+  .ov-label { color: var(--ink-3); }
+  .nieuw-tag {
+    font-size: 11px; color: #004699; font-weight: 600;
+    background: #e8f0fb; padding: 2px 8px; border-radius: 3px; margin-left: 8px;
+  }
+</style>
+<script>
+  let collecties = [], sublagen = [];
+  let collModus = 'bestaand', subModus = 'bestaand';
+  let collGekozen = '', subGekozen = '';
+
+  function naarSnakeCase(naam) {
+    if (!naam) return '';
+    return naam
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .toLowerCase();
+  }
+
+  function huidigeCollectie() {
+    return collModus === 'bestaand'
+      ? collGekozen
+      : document.getElementById('coll-nieuw-naam').value.trim();
+  }
+  function huidigeSublaag() {
+    return subModus === 'bestaand'
+      ? subGekozen
+      : document.getElementById('sub-nieuw-naam').value.trim();
+  }
+
+  // ── Collecties ─────────────────────────────────
+  async function laadCollecties() {
+    try {
+      const resp = await fetch('/api/collecties');
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      collecties = data.collecties || [];
+      renderCollecties();
+    } catch (err) {
+      document.getElementById('coll-lijst').innerHTML =
+        `<div class="lijst-leeg">Collecties konden niet worden opgehaald.
+          Kies hierboven "Nieuwe collectie".</div>`;
+    }
+  }
+
+  function renderCollecties() {
+    const zoek = document.getElementById('coll-zoek').value.toLowerCase();
+    const lijst = collecties.filter(c => c.toLowerCase().includes(zoek));
+    const el = document.getElementById('coll-lijst');
+
+    el.innerHTML = lijst.length === 0
+      ? '<div class="lijst-leeg">Geen collectie gevonden</div>'
+      : lijst.map(c => `
+          <div class="lijst-item ${collGekozen === c ? 'gekozen' : ''}"
+               onclick="kiesCollectie(${JSON.stringify(c).replace(/"/g, '&quot;')})">
+            <span class="lijst-bol"></span>${c}
+          </div>`).join('');
+
+    document.getElementById('coll-teller').textContent =
+      `${lijst.length} van ${collecties.length}`;
+  }
+
+  function kiesCollectie(naam) {
+    collGekozen = naam;
+    renderCollecties();
+    laadSublagen(naam);
+    werkBij();
+  }
+
+  function zetCollModus(modus) {
+    collModus = modus;
+    document.getElementById('coll-btn-bestaand').classList.toggle('actief', modus === 'bestaand');
+    document.getElementById('coll-btn-nieuw').classList.toggle('actief', modus === 'nieuw');
+    document.getElementById('coll-bestaand').style.display = modus === 'bestaand' ? '' : 'none';
+    document.getElementById('coll-nieuw').style.display    = modus === 'nieuw' ? '' : 'none';
+
+    if (modus === 'nieuw') {
+      // Bij een nieuwe collectie bestaan er nog geen sublagen
+      sublagen = [];
+      zetSubModus('nieuw');
+      document.getElementById('sub-wissel').style.display = 'none';
+      document.getElementById('sub-nieuw-verplicht').style.display = 'block';
+    } else {
+      document.getElementById('sub-wissel').style.display = '';
+      document.getElementById('sub-nieuw-verplicht').style.display = 'none';
+    }
+    werkBij();
+  }
+
+  // ── Sublagen ───────────────────────────────────
+  async function laadSublagen(collectie) {
+    subGekozen = '';
+    document.getElementById('sub-zoek').value = '';
+    document.getElementById('sub-lijst').innerHTML =
+      '<div class="lijst-leeg">Sublagen ophalen…</div>';
+    try {
+      const resp = await fetch('/api/sublagen?collectie=' + encodeURIComponent(collectie));
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      sublagen = data.sublagen || [];
+      zetSubModus(sublagen.length ? 'bestaand' : 'nieuw');
+      renderSublagen();
+    } catch (err) {
+      sublagen = [];
+      zetSubModus('nieuw');
+      renderSublagen();
+    }
+  }
+
+  function renderSublagen() {
+    const zoek = document.getElementById('sub-zoek').value.toLowerCase();
+    const lijst = sublagen.filter(s => s.toLowerCase().includes(zoek));
+    const el = document.getElementById('sub-lijst');
+
+    el.innerHTML = lijst.length === 0
+      ? '<div class="lijst-leeg">Geen sublaag in deze collectie</div>'
+      : lijst.map(s => `
+          <div class="lijst-item ${subGekozen === s ? 'gekozen' : ''}"
+               onclick="kiesSublaag(${JSON.stringify(s).replace(/"/g, '&quot;')})">
+            <span class="lijst-bol"></span>${s}
+          </div>`).join('');
+
+    document.getElementById('sub-teller').textContent =
+      `${lijst.length} van ${sublagen.length}`;
+  }
+
+  function kiesSublaag(naam) {
+    subGekozen = naam;
+    renderSublagen();
+    werkBij();
+  }
+
+  function zetSubModus(modus) {
+    subModus = modus;
+    document.getElementById('sub-btn-bestaand').classList.toggle('actief', modus === 'bestaand');
+    document.getElementById('sub-btn-nieuw').classList.toggle('actief', modus === 'nieuw');
+    document.getElementById('sub-bestaand').style.display = modus === 'bestaand' ? '' : 'none';
+    document.getElementById('sub-nieuw').style.display    = modus === 'nieuw' ? '' : 'none';
+    werkBij();
+  }
+
+  // ── Voortgang en overzicht ─────────────────────
+  function werkBij() {
+    const coll  = huidigeCollectie();
+    const sub   = huidigeSublaag();
+    const kaart = document.getElementById('kaartlaag-naam').value.trim();
+    const kaartSnake = naarSnakeCase(kaart);
+
+    document.getElementById('sub-sectie').classList.toggle('uit', !coll);
+    document.getElementById('kaart-sectie').classList.toggle('uit', !sub);
+
+    document.getElementById('kaartlaag-hint').textContent = kaart
+      ? `In de MapFile: ${kaartSnake}`
+      : 'Spaties en hoofdletters worden omgezet naar snake_case.';
+
+    const compleet = coll && sub && kaartSnake;
+    document.getElementById('overzicht').style.display = compleet ? 'block' : 'none';
+    if (compleet) {
+      document.getElementById('ov-coll').textContent  = coll;
+      document.getElementById('ov-sub').textContent   = sub;
+      document.getElementById('ov-kaart').textContent = kaartSnake;
+      document.getElementById('ov-coll-nieuw').style.display = collModus === 'nieuw' ? '' : 'none';
+      document.getElementById('ov-sub-nieuw').style.display  = subModus  === 'nieuw' ? '' : 'none';
+    }
+
+    const btn = document.getElementById('btn-next');
+    btn.disabled = !compleet;
+    btn.style.opacity = compleet ? '1' : '.4';
+    btn.style.cursor  = compleet ? 'pointer' : 'not-allowed';
+  }
+
+  function volgende() {
+    const coll  = huidigeCollectie();
+    const sub   = huidigeSublaag();
+    const kaart = naarSnakeCase(document.getElementById('kaartlaag-naam').value.trim());
+    if (!coll || !sub || !kaart) return;
+
+    sessionStorage.setItem('wms_kaartlaag', JSON.stringify({
+      collectie:        coll,
+      collectie_nieuw:  collModus === 'nieuw',
+      sublaag:          sub,
+      sublaag_nieuw:    subModus  === 'nieuw',
+      kaartlaag:        kaart,
+      kaartlaag_label:  document.getElementById('kaartlaag-naam').value.trim(),
+    }));
+
+    // De kaartlaagnaam is tegelijk de WMS-laagnaam in het MapFile-deel
+    const step1 = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
+    step1.wms_laagnaam = kaart;
+    sessionStorage.setItem('wms_step1', JSON.stringify(step1));
+
+    window.location.href = '/publicatie/eigenschappen';
+  }
+
+  // ── Herstel bij terugnavigatie ─────────────────
+  (function herstel() {
+    const bewaard = JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}');
+    laadCollecties().then(() => {
+      if (bewaard.collectie_nieuw) {
+        zetCollModus('nieuw');
+        document.getElementById('coll-nieuw-naam').value = bewaard.collectie || '';
+      } else if (bewaard.collectie) {
+        kiesCollectie(bewaard.collectie);
+      }
+      if (bewaard.kaartlaag_label) {
+        document.getElementById('kaartlaag-naam').value = bewaard.kaartlaag_label;
+      }
+      werkBij();
+    });
+  })();
+</script>
+{% endblock %}

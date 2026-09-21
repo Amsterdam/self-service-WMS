@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step active"><span class="step-num">1</span> Publicatie</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">2</span> Kaartlaag</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">3</span> WMS</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">4</span> Klaar</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Self-service WMS en Kaartlagen</h2>
+    <p class="subtitle">
+      Met deze tool dient u een aanvraag in om een dataset als kaartlaag te publiceren op
+      <a href="https://data.amsterdam.nl" target="_blank" style="color:var(--red)">data.amsterdam.nl</a>.
+      Voor die publicatie is een WMS nodig, die u hier ook aanmaakt. U kunt ook alleen een WMS
+      maken, zonder publicatie op data.amsterdam.nl.
+    </p>
+
+    <div class="warning-box" style="background-color:#fff4e5; border-left:5px solid #ffa117;
+         padding:15px; margin-bottom:24px; border-radius:3px;">
+      <p style="margin:0; color:#663c00; font-size:.95rem; line-height:1.5;">
+        <strong>Let op:</strong> De data waarvoor een WMS wordt gegenereerd, moet <b>openbaar</b> zijn.
+        In het <a href="https://github.com/Amsterdam/amsterdam-schema" target="_blank"
+        style="color:#663c00; text-decoration:underline; font-weight:500;">Amsterdamse schema</a>
+        is de autorisatie gedefinieerd op dataset-, tabel- en attribuutniveau.
+        Alleen data met het autorisatieniveau <strong>openbaar</strong> wordt door deze tool geaccepteerd.
+      </p>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="section-label">Wat wilt u doen?</div>
+
+    <div id="keuzes" style="display:flex; flex-direction:column; gap:12px;">
+
+      <label class="keuze" data-route="publicatie">
+        <input type="radio" name="route" value="publicatie"/>
+        <span class="keuze-bol"></span>
+        <span class="keuze-tekst">
+          <strong>Een dataset publiceren op data.amsterdam.nl</strong>
+          De kaartlaag komt in de kaartlagenkiezer te staan. U doorloopt eerst de vragen voor
+          de publicatie en maakt daarna de WMS.
+        </span>
+      </label>
+
+      <label class="keuze" data-route="wms">
+        <input type="radio" name="route" value="wms"/>
+        <span class="keuze-bol"></span>
+        <span class="keuze-tekst">
+          <strong>Alleen een WMS maken</strong>
+          U krijgt een MapFile die u zelf kunt gebruiken. Er wordt niets aangevraagd voor
+          data.amsterdam.nl.
+        </span>
+      </label>
+
+    </div>
+
+    <div class="btn-row">
+      <button id="btn-verder" class="btn btn-primary" onclick="verder()" disabled
+              style="opacity:.4; cursor:not-allowed;">
+        Verder
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .keuze {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 16px 18px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    background: var(--white);
+    transition: border-color .15s, background .15s;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  .keuze:hover { border-color: #bbb; }
+  .keuze.actief { border-color: var(--red); background: #fff8f8; }
+  .keuze input { position: absolute; opacity: 0; pointer-events: none; }
+  .keuze-bol {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid var(--border);
+    flex-shrink: 0; margin-top: 2px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .keuze.actief .keuze-bol { border-color: var(--red); }
+  .keuze.actief .keuze-bol::after {
+    content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+  }
+  .keuze-tekst { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+  .keuze-tekst strong {
+    display: block; font-size: 15px; color: var(--ink);
+    font-weight: 600; margin-bottom: 4px;
+  }
+</style>
+<script>
+  let gekozenRoute = null;
+
+  document.querySelectorAll('.keuze').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.keuze').forEach(k => k.classList.remove('actief'));
+      el.classList.add('actief');
+      el.querySelector('input').checked = true;
+      gekozenRoute = el.dataset.route;
+
+      const btn = document.getElementById('btn-verder');
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+    });
+  });
+
+  // Eerdere keuze herstellen
+  const bewaard = sessionStorage.getItem('wms_route');
+  if (bewaard) {
+    const el = document.querySelector(`.keuze[data-route="${bewaard}"]`);
+    if (el) el.click();
+  }
+
+  function verder() {
+    if (!gekozenRoute) return;
+    sessionStorage.setItem('wms_route', gekozenRoute);
+    window.location.href = gekozenRoute === 'publicatie'
+      ? '/publicatie/schema'
+      : '/scenario1';
+  }
+</script>
+{% endblock %}

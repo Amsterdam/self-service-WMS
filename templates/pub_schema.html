@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block stepper %}
+<nav class="stepper" aria-label="Voortgang">
+  <div class="step active"><span class="step-num">1</span> Publicatie</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">2</span> Kaartlaag</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">3</span> WMS</div>
+  <span class="step-arrow">›</span>
+  <div class="step"><span class="step-num">4</span> Klaar</div>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Gegevens uit het Amsterdams Schema</h2>
+    <p class="subtitle">
+      Vul de link naar de <strong>tabeldefinitie</strong> in en klik op Gegevens ophalen.
+      De dataset-metadata en het DSO API-eindpunt worden daar automatisch uit afgeleid,
+      dus u hoeft die niet apart in te vullen.
+    </p>
+  </div>
+
+  <div class="card-body">
+    <div class="section-label">Tabeldefinitie</div>
+
+    <div class="form-group">
+      <label>
+        Amsterdam Schema — Tabel URL <span class="req">*</span>
+        <span class="tooltip-icon">?
+          <span class="tooltip-text">
+            De URL naar het tabel JSON-bestand, bijvoorbeeld <strong>v1.json</strong>.
+            Hieruit komen de geometriekolom, het geometrietype en de attributen.
+          </span>
+        </span>
+      </label>
+      <input type="url" id="url_tabel" name="url_tabel" autocomplete="off"
+             placeholder="https://github.com/Amsterdam/amsterdam-schema/blob/master/datasets/varen/ligplaats/v1.json"/>
+    </div>
+
+    <div style="margin-top:20px;">
+      <button id="btn-fetch" class="btn btn-primary" onclick="haalOp()">
+        <span id="fetch-label">Gegevens ophalen</span>
+        <span class="spinner" id="fetch-spinner"></span>
+      </button>
+    </div>
+
+    <div class="result-panel" id="result-panel">
+      <h4>Opgehaalde gegevens</h4>
+      <div id="result-rows"></div>
+    </div>
+
+    <!-- Handmatige correctie van de API-URL, alleen zichtbaar bij problemen -->
+    <div id="api-correctie" style="display:none; margin-top:18px;">
+      <div class="form-group">
+        <label>DSO API URL <span class="req">*</span></label>
+        <input type="url" id="url_api_handmatig" autocomplete="off"
+               placeholder="https://api.data.amsterdam.nl/v1/varen/v1/ligplaats"/>
+      </div>
+      <div style="font-size:12px; color:var(--ink-3); margin-top:6px; line-height:1.5;">
+        De API-URL kon niet uit het schemapad worden afgeleid. Vul hem hier in en haal de
+        gegevens opnieuw op.
+      </div>
+    </div>
+
+    <div id="error-msg" class="error-msg" style="display:none;"></div>
+
+    <div class="btn-row">
+      <a href="/" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Vorige
+      </a>
+      <button id="btn-next" class="btn btn-primary" onclick="volgende()" disabled
+              style="opacity:.4; cursor:not-allowed;">
+        Verder
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .thema-pil {
+    display: inline-block;
+    background: #e8f0fb;
+    color: #004699;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 3px;
+    margin: 0 6px 4px 0;
+  }
+  .afgeleid {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-left: 6px;
+  }
+</style>
+<script>
+  // Eerder ingevulde URL herstellen
+  const vorige = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
+  if (vorige.url_tabel) document.getElementById('url_tabel').value = vorige.url_tabel;
+
+  async function haalOp() {
+    const url_tabel = document.getElementById('url_tabel').value.trim();
+    const url_api_handmatig = document.getElementById('url_api_handmatig').value.trim();
+    const errEl = document.getElementById('error-msg');
+    errEl.style.display = 'none';
+    errEl.innerHTML = '';
+
+    if (!url_tabel) {
+      errEl.textContent = 'Vul de tabel-URL in voordat u gegevens ophaalt.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    document.getElementById('fetch-label').textContent = 'Bezig met ophalen…';
+    document.getElementById('fetch-spinner').style.display = 'block';
+    document.getElementById('btn-fetch').disabled = true;
+    document.getElementById('result-panel').classList.remove('visible');
+
+    try {
+      const resp = await fetch('/api/fetch-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url_tabel, url_api: url_api_handmatig })
+      });
+      const data = await resp.json();
+
+      // Autorisatie-blokkering
+      if (data.auth_error) {
+        const redenen = (data.auth_reden || []).map(r => `<li>${r}</li>`).join('');
+        errEl.innerHTML = `
+          <div style="display:flex; gap:14px; align-items:flex-start;">
+            <div style="font-size:22px; flex-shrink:0;">⛔</div>
+            <div>
+              <strong style="display:block; margin-bottom:8px;">${data.auth_melding}</strong>
+              <div style="font-family:var(--font-mono); font-size:12px;">
+                Autorisatie: ${data.auth_waarde}
+              </div>
+              ${redenen ? `<ul style="margin:8px 0 0 16px; font-size:12.5px; line-height:1.6;">${redenen}</ul>` : ''}
+            </div>
+          </div>`;
+        errEl.style.display = 'block';
+        return;
+      }
+
+      if (data.error) {
+        errEl.innerHTML = `<strong>Fout bij ophalen:</strong><br>${data.error}`;
+        errEl.style.display = 'block';
+        return;
+      }
+
+      // De API-URL: afgeleid, of handmatig ingevuld
+      const url_api = url_api_handmatig || data.url_api_afgeleid || '';
+      if (!url_api) {
+        document.getElementById('api-correctie').style.display = 'block';
+      } else {
+        document.getElementById('api-correctie').style.display = 'none';
+      }
+
+      // Resultaten tonen
+      const themaHtml = (data.themes || []).length
+        ? data.themes.map(t => `<span class="thema-pil">${t}</span>`).join('')
+        : '<span style="color:var(--ink-3)">geen thema in dataset.json</span>';
+
+      const rows = [
+        { key: 'Dataset',         val: data.dataset_title || '—' },
+        { key: 'Thema',           val: themaHtml, raw: true },
+        { key: 'Team',            val: data.publisher || '—' },
+        { key: 'Tabel naam',      val: data.table_name || '—' },
+        { key: 'Geometrie kolom', val: data.mainGeometry || '—' },
+        { key: 'Geometrietype',   val: data.geometryType || '—' },
+        { key: 'Uniek ID veld',   val: data.unique_id || '—' },
+        { key: 'Coördinaatstelsel', val: data.crs || '—' },
+        { key: 'Attributen',      val: `${(data.attributen || []).length} gevonden` },
+        { key: 'Autorisatie',     val: data.auth || '—' },
+        { key: 'Dataset URL',     val: (data.url_dataset_afgeleid || '—') +
+                                        '<span class="afgeleid">afgeleid</span>', raw: true },
+        { key: 'DSO API URL',     val: (url_api || '—') +
+                                        (url_api_handmatig ? '' : '<span class="afgeleid">afgeleid</span>'), raw: true },
+      ];
+
+      document.getElementById('result-rows').innerHTML = rows.map(r => `
+        <div class="result-row">
+          <span class="result-key">${r.key}</span>
+          <span class="result-val">${r.raw ? r.val : r.val}</span>
+        </div>`).join('');
+      document.getElementById('result-panel').classList.add('visible');
+
+      // Opslaan met dezelfde sleutels die het WMS-deel al verwacht
+      sessionStorage.setItem('wms_step2', JSON.stringify({
+        url_tabel, url_api,
+        url_dataset:  data.url_dataset_afgeleid || '',
+        table_name:   data.table_name   || '',
+        publisher:    data.publisher    || '',
+        auth:         data.auth         || '',
+        description:  data.description  || '',
+        mainGeometry: data.mainGeometry || 'geometrie',
+        geometryType: data.geometryType || 'POLYGON',
+        unique_id:    data.unique_id    || 'id',
+        crs:          data.crs          || 'EPSG:28992',
+      }));
+
+      // Publicatiegegevens apart bewaren voor pagina 3 t/m 5
+      sessionStorage.setItem('wms_publicatie', JSON.stringify({
+        dataset_title: data.dataset_title || '',
+        dataset_id:    data.dataset_id    || '',
+        tabel_id:      data.tabel_id      || '',
+        themes:        data.themes        || [],
+        attributen:    data.attributen    || [],
+      }));
+
+      const btn = document.getElementById('btn-next');
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor  = 'pointer';
+
+    } catch (err) {
+      errEl.textContent = 'Netwerkfout: ' + err.message;
+      errEl.style.display = 'block';
+    } finally {
+      document.getElementById('fetch-label').textContent = 'Gegevens ophalen';
+      document.getElementById('fetch-spinner').style.display = 'none';
+      document.getElementById('btn-fetch').disabled = false;
+    }
+  }
+
+  function volgende() {
+    window.location.href = '/publicatie/kaartlaag';
+  }
+</script>
+{% endblock %}

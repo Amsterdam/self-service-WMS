@@ -17,15 +17,22 @@
 {% block content %}
 
 <div class="card" id="card-genereer">
-  <div class="card-header">
-    <h2>MapFile genereren</h2>
-    <p class="subtitle">
+  <div class="card-header klapbaar" id="genereer-kop" onclick="wisselGenereer()">
+    <div class="kop-regel">
+      <h2>MapFile genereren</h2>
+      <svg class="chevron" id="genereer-chevron" width="20" height="20"
+           viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <p class="subtitle" id="genereer-subtitle">
       Controleer hieronder de samenvatting van alle ingevoerde gegevens.
       Klik daarna op <strong>Creëer WMS</strong> om de MapFile te genereren.
     </p>
   </div>
 
-  <div class="card-body">
+  <div class="card-body" id="genereer-body">
     <div class="section-label">Samenvatting</div>
     <div class="summary-grid" id="summary-grid">
       </div>
@@ -107,10 +114,107 @@
     </div>
   </div>
 </div>
+
+<div class="card" id="card-aanvraag" style="display:none; margin-top:24px;">
+  <div class="card-header klapbaar" id="aanvraag-kop" onclick="wisselAanvraag()">
+    <div class="kop-regel">
+      <h2>Kaartlaag aanvraag</h2>
+      <svg class="chevron" id="aanvraag-chevron" width="20" height="20"
+           viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <p class="subtitle">
+      De vragen en antwoorden voor de publicatie op data.amsterdam.nl. Download dit bestand
+      en voeg het toe aan uw verzoek aan Team GEO.
+    </p>
+  </div>
+
+  <div class="card-body" id="aanvraag-body">
+    <div id="aanvraag-inhoud"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-aanvraag" onclick="downloadAanvraag()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Download aanvraag (JSON)
+      </button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <style>
+  /* ── Klapbare kaartkoppen ─────────────────── */
+  .card-header.klapbaar { cursor: pointer; user-select: none; }
+  .card-header.klapbaar:hover h2 { color: var(--red); }
+  .kop-regel { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .kop-regel h2 { margin-bottom: 6px; transition: color .15s; }
+  .chevron { color: var(--ink-3); flex-shrink: 0; transition: transform .2s; margin-bottom: 6px; }
+  .chevron.dicht { transform: rotate(-90deg); }
+  .card-body.dicht { display: none; }
+  .card-header.dicht { padding-bottom: 24px; }
+  .card-header.dicht .subtitle { display: none; }
+
+  /* ── Aanvraag ─────────────────────────────── */
+  .btn-aanvraag { background: #004699; color: #fff; border: none; }
+  .btn-aanvraag:hover { background: #003070; }
+
+  .aanvr-groep {
+    font-size: 14px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink);
+    margin: 28px 0 12px; display: flex; align-items: center; gap: 10px;
+  }
+  .aanvr-groep:first-child { margin-top: 0; }
+  .aanvr-groep::after {
+    content: ""; flex: 1; height: 1px; background: var(--ink-3); opacity: .35;
+  }
+  .aanvr-tabel {
+    border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  }
+  .aanvr-rij {
+    display: flex; gap: 14px; align-items: baseline;
+    padding: 9px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13.5px;
+  }
+  .aanvr-rij:last-child { border-bottom: none; }
+  .aanvr-rij.kolom { flex-direction: column; align-items: stretch; gap: 10px; }
+  .aanvr-vraag { color: var(--ink-2); flex: 1; min-width: 200px; }
+
+  /* Attributen als tabel in plaats van een lange opsomming */
+  table.attr-tabel {
+    width: 100%; border-collapse: collapse;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; background: var(--white);
+  }
+  table.attr-tabel th {
+    text-align: left; padding: 7px 12px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--ink-3);
+  }
+  table.attr-tabel td {
+    padding: 7px 12px; border-bottom: 1px solid #f0f0f0;
+    font-size: 13px; color: var(--ink); vertical-align: top;
+  }
+  table.attr-tabel tr:last-child td { border-bottom: none; }
+  table.attr-tabel td.mono {
+    font-family: var(--font-mono); font-size: 12px; color: var(--ink-3);
+    width: 45%; word-break: break-all;
+  }
+  .aanvr-antw  { font-weight: 600; color: var(--ink); text-align: right; flex-shrink: 0; max-width: 55%; }
+  .aanvr-antw.mono { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; word-break: break-all; }
+  .aanvr-nieuw {
+    font-size: 10.5px; color: #004699; font-weight: 600;
+    background: #e8f0fb; padding: 2px 7px; border-radius: 3px; margin-left: 6px;
+  }
+  .aanvr-ja  { color: var(--step-done); }
+  .aanvr-nee { color: var(--red); }
+  .aanvr-leeg { font-size: 13px; color: var(--ink-3); padding: 4px 0; }
+
   /* Styling voor de samenvatting en output */
   .summary-grid {
     display: grid;
@@ -255,6 +359,8 @@
       document.getElementById('card-resultaat').style.display = 'block';
       document.getElementById('stepper-4').className = 'step done';
       document.getElementById('stepper-5').className = 'step active';
+      klapGenereerDicht();
+      renderAanvraag();
       document.getElementById('card-resultaat').scrollIntoView({ behavior: 'smooth' });
 
     } catch (err) {
@@ -343,6 +449,249 @@
     window.location.href = '/scenario2';
   }
 
+  // ── In- en uitklappen van kaartkoppen ─────────
+  function wisselKaart(bodyId, chevronId, kopId) {
+    const body = document.getElementById(bodyId);
+    const chev = document.getElementById(chevronId);
+    const kop  = document.getElementById(kopId);
+    const dicht = body.classList.toggle('dicht');
+    chev.classList.toggle('dicht', dicht);
+    kop.classList.toggle('dicht', dicht);
+  }
+
+  function wisselGenereer() { wisselKaart('genereer-body', 'genereer-chevron', 'genereer-kop'); }
+  function wisselAanvraag() { wisselKaart('aanvraag-body', 'aanvraag-chevron', 'aanvraag-kop'); }
+
+  function klapGenereerDicht() {
+    const body = document.getElementById('genereer-body');
+    if (!body.classList.contains('dicht')) wisselGenereer();
+  }
+
+  // ── Aanvraag opbouwen ─────────────────────────
+  function leesAanvraagData() {
+    return {
+      step1:       JSON.parse(sessionStorage.getItem('wms_step1') || '{}'),
+      step2:       JSON.parse(sessionStorage.getItem('wms_step2') || '{}'),
+      step3:       JSON.parse(sessionStorage.getItem('wms_step3') || '{}'),
+      publicatie:  JSON.parse(sessionStorage.getItem('wms_publicatie') || '{}'),
+      kaartlaag:   JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}'),
+      detail:      JSON.parse(sessionStorage.getItem('wms_detailpagina') || '{}'),
+      eigen:       JSON.parse(sessionStorage.getItem('wms_eigenschappen') || '{}'),
+      route:       sessionStorage.getItem('wms_route') || 'wms',
+    };
+  }
+
+  function jaNee(v) {
+    if (v === true)  return 'Ja';
+    if (v === false) return 'Nee';
+    return 'Niet opgegeven';
+  }
+
+  // ── De publicatievragen zoals ze aan de gebruiker gesteld zijn ──
+  // Alleen wat de gebruiker daadwerkelijk heeft geantwoord. De technische
+  // MapFile-instellingen staan uitsluitend in mapfileGegevens(), zodat
+  // dezelfde waarde niet in twee secties terechtkomt.
+  function publicatieVragen(d) {
+    return [
+      { groep: 'Publicatie',
+        vraag: 'Wilt u een dataset op de kaart van data.amsterdam.nl publiceren of alleen een WMS maken?',
+        antwoord: d.route === 'publicatie'
+          ? 'Publiceren op data.amsterdam.nl'
+          : 'Alleen een WMS maken' },
+      { groep: 'Publicatie',
+        vraag: 'Wat is het thema van de dataset?',
+        antwoord: (d.publicatie.themes || []).join(', ') || 'Niet opgegeven' },
+      { groep: 'Publicatie',
+        vraag: 'Onder welke collectie komt de kaartlaag?',
+        antwoord: d.kaartlaag.collectie || 'Niet opgegeven',
+        nieuw: !!d.kaartlaag.collectie_nieuw },
+      { groep: 'Publicatie',
+        vraag: 'Onder welke sublaag komt de kaartlaag?',
+        antwoord: d.kaartlaag.sublaag || 'Niet opgegeven',
+        nieuw: !!d.kaartlaag.sublaag_nieuw },
+      { groep: 'Publicatie',
+        vraag: 'Wat is de naam van de kaartlaag?',
+        antwoord: d.kaartlaag.kaartlaag || 'Niet opgegeven', mono: true },
+      { groep: 'Detailpagina',
+        vraag: 'Moet er een detailpagina komen?',
+        antwoord: jaNee(d.detail.aan) },
+      { groep: 'Detailpagina',
+        vraag: 'Welke attributen worden op de detailpagina getoond?',
+        // Het antwoord is een tabel: attribuutnaam naast de weergavenaam
+        tabel: d.detail.aan ? (d.detail.attributen || []) : null,
+        antwoord: d.detail.aan ? null : 'Niet van toepassing' },
+      { groep: 'Zichtbaarheid',
+        vraag: 'Moet de kaartlaag activeerbaar zijn?',
+        antwoord: jaNee(d.eigen.activeerbaar) },
+      { groep: 'Zichtbaarheid',
+        vraag: 'Mag de kaartlaag voor het publiek toegankelijk zijn?',
+        antwoord: jaNee(d.eigen.publiek) },
+    ];
+  }
+
+  // ── De technische MapFile-gegevens ────────────
+  function mapfileGegevens(d) {
+    return {
+      naam:           d.step1.mapfile_naam   || '',
+      wms_groepsnaam: d.step1.wms_groepsnaam || '',
+      bron: {
+        dataset_titel:      d.publicatie.dataset_title || '',
+        dataset_id:         d.publicatie.dataset_id    || '',
+        tabel_id:           d.publicatie.tabel_id      || '',
+        team:               d.step2.publisher   || '',
+        autorisatie_data:   d.step2.auth        || '',
+        schema_tabel_url:   d.step2.url_tabel   || '',
+        schema_dataset_url: d.step2.url_dataset || '',
+        dso_api_url:        d.step2.url_api     || '',
+      },
+      // Lijst, zodat een tweede kaartlaag hier later bij kan
+      lagen: [
+        {
+          layer_name:     d.kaartlaag.kaartlaag || d.step1.wms_laagnaam || '',
+          databasetabel:  d.step2.table_name   || '',
+          geometriekolom: d.step2.mainGeometry || '',
+          geometrietype:  d.step2.geometryType || '',
+          uniek_id:       d.step2.unique_id    || '',
+          crs:            d.step2.crs          || '',
+          kleur:          d.step3.color        || '',
+          filter: d.step3.filter_aan
+            ? { kolom: d.step3.filter_kolom, waarde: d.step3.filter_waarde }
+            : null,
+          label_kolom: d.step3.label_aan ? (d.step3.label_kolom || '') : null,
+        },
+      ],
+    };
+  }
+
+  // Dezelfde MapFile-gegevens, maar als leesbare regels voor het scherm
+  function mapfileRegels(mf) {
+    const l = mf.lagen[0] || {};
+    return [
+      { vraag: 'Naam van de MapFile',   antwoord: mf.naam || '—', mono: true },
+      { vraag: 'WMS-groepsnaam',        antwoord: mf.wms_groepsnaam || '—', mono: true },
+      { vraag: 'LAYER NAME',            antwoord: l.layer_name || '—', mono: true },
+      { vraag: 'Databasetabel',         antwoord: l.databasetabel || '—', mono: true },
+      { vraag: 'Geometriekolom',        antwoord: l.geometriekolom || '—', mono: true },
+      { vraag: 'Geometrietype',         antwoord: l.geometrietype || '—', mono: true },
+      { vraag: 'Uniek ID-veld',         antwoord: l.uniek_id || '—', mono: true },
+      { vraag: 'Coördinaatstelsel',     antwoord: l.crs || '—', mono: true },
+      { vraag: 'Kleur',                 antwoord: l.kleur || '—', mono: true },
+      { vraag: 'Filter op de data',     antwoord: l.filter
+          ? `${l.filter.kolom} = '${l.filter.waarde}'` : 'Geen', mono: !!l.filter },
+      { vraag: 'Label op de kaart',     antwoord: l.label_kolom || 'Geen',
+          mono: !!l.label_kolom },
+    ];
+  }
+
+  function renderAanvraag() {
+    const d = leesAanvraagData();
+
+    // Bij de route "alleen een WMS maken" is er geen publicatie-aanvraag
+    if (d.route !== 'publicatie' || !d.kaartlaag.kaartlaag) {
+      document.getElementById('card-aanvraag').style.display = 'none';
+      return;
+    }
+
+    function rijHtml(q) {
+      // Een antwoord dat uit een tabel bestaat, krijgt zijn eigen opmaak
+      if (q.tabel) {
+        if (!q.tabel.length) {
+          return `<div class="aanvr-rij">
+              <span class="aanvr-vraag">${escHtml(q.vraag)}</span>
+              <span class="aanvr-antw">Geen</span></div>`;
+        }
+        return `
+          <div class="aanvr-rij kolom">
+            <span class="aanvr-vraag">${escHtml(q.vraag)}</span>
+            <table class="attr-tabel">
+              <thead>
+                <tr><th>Attribuut naam</th><th>Weergave op frontend</th></tr>
+              </thead>
+              <tbody>
+                ${q.tabel.map(a => `<tr>
+                  <td class="mono">${escHtml(a.kolom)}</td>
+                  <td>${escHtml(a.label)}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      }
+      let antw = escHtml(q.antwoord);
+      if (q.antwoord === 'Ja')  antw = '<span class="aanvr-ja">Ja</span>';
+      if (q.antwoord === 'Nee') antw = '<span class="aanvr-nee">Nee</span>';
+      return `
+        <div class="aanvr-rij">
+          <span class="aanvr-vraag">${escHtml(q.vraag)}</span>
+          <span class="aanvr-antw ${q.mono ? 'mono' : ''}">${antw}${
+            q.nieuw ? '<span class="aanvr-nieuw">nieuw</span>' : ''}</span>
+        </div>`;
+    }
+
+    const vragen = publicatieVragen(d);
+    let html = '';
+    ['Publicatie', 'Detailpagina', 'Zichtbaarheid'].forEach(g => {
+      const items = vragen.filter(q => q.groep === g);
+      if (!items.length) return;
+      html += `<div class="aanvr-groep">${g}</div>`;
+      html += `<div class="aanvr-tabel">${items.map(rijHtml).join('')}</div>`;
+    });
+
+    // De MapFile-gegevens als eigen blok
+    html += `<div class="aanvr-groep">MapFile</div>`;
+    html += `<div class="aanvr-tabel">${
+      mapfileRegels(mapfileGegevens(d)).map(rijHtml).join('')}</div>`;
+
+    document.getElementById('aanvraag-inhoud').innerHTML = html;
+    document.getElementById('card-aanvraag').style.display = 'block';
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ── JSON-download ─────────────────────────────
+  // Twee secties zonder overlap: vragen_en_antwoorden bevat wat de gebruiker
+  // heeft geantwoord, mapfile bevat de technische gegevens.
+  function bouwAanvraagJson() {
+    const d = leesAanvraagData();
+    return {
+      versie: '2.0',
+      aangemaakt: new Date().toISOString(),
+      bron: 'Self-service WMS en Kaartlagen, Team DE GEO',
+      route: d.route === 'publicatie'
+        ? 'publicatie_op_data_amsterdam'
+        : 'alleen_wms',
+
+      vragen_en_antwoorden: publicatieVragen(d).map(q => {
+        const item = { groep: q.groep, vraag: q.vraag };
+        if (q.tabel) {
+          item.antwoord_tabel = {
+            kolommen: ['attribuut_naam', 'weergave_op_frontend'],
+            rijen: q.tabel.map(a => [a.kolom, a.label]),
+          };
+        } else {
+          item.antwoord = q.antwoord;
+        }
+        if (q.nieuw) item.nieuw = true;
+        return item;
+      }),
+
+      mapfile: mapfileGegevens(d),
+    };
+  }
+
+  function downloadAanvraag() {
+    const json = JSON.stringify(bouwAanvraagJson(), null, 2);
+    const naam = (JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}').kaartlaag
+                  || 'kaartlaag');
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `aanvraag_${naam}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   function nieuweWMS() {
     sessionStorage.clear();
     window.location.href = '/';
@@ -362,6 +711,7 @@
         updateLaagTeller();
         renderHighlightedMapfile(mapfileContent);
         document.getElementById('card-genereer').style.display  = 'none';
+        renderAanvraag();
         document.getElementById('card-resultaat').style.display = 'block';
         document.getElementById('stepper-4').className = 'step done';
         document.getElementById('stepper-5').className = 'step active';
@@ -451,6 +801,8 @@
       document.getElementById('card-resultaat').style.display = 'block';
       document.getElementById('stepper-4').className = 'step done';
       document.getElementById('stepper-5').className = 'step active';
+      klapGenereerDicht();
+      renderAanvraag();
       document.getElementById('card-resultaat').scrollIntoView({ behavior: 'smooth' });
 
     } catch (err) {
@@ -497,6 +849,8 @@
       document.getElementById('card-resultaat').style.display = 'block';
       document.getElementById('stepper-4').className = 'step done';
       document.getElementById('stepper-5').className = 'step active';
+      klapGenereerDicht();
+      renderAanvraag();
       document.getElementById('card-resultaat').scrollIntoView({ behavior: 'smooth' });
 
       sessionStorage.setItem('wms_bestaande_mapfile', mapfileContent);
