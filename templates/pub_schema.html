@@ -68,7 +68,7 @@
     <div id="error-msg" class="error-msg" style="display:none;"></div>
 
     <div class="btn-row">
-      <a href="/" class="btn btn-secondary">
+      <a href="/" id="btn-vorige" class="btn btn-secondary">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round"/>
@@ -237,6 +237,20 @@
       document.getElementById('fetch-spinner').style.display = 'none';
       document.getElementById('btn-fetch').disabled = false;
     }
+  }
+
+  // Bij het wijzigen van een laag: de eerder gebruikte schema-URL voorvullen
+  const wijzigUrl = sessionStorage.getItem('wms_wijzig_schema_url');
+  if (wijzigUrl && !document.getElementById('url_tabel').value) {
+    document.getElementById('url_tabel').value = wijzigUrl;
+  }
+
+  // Tweede of volgende laag, of een wijziging: terug naar het eindscherm
+  if (sessionStorage.getItem('wms_toevoegen_modus') === 'true'
+      || sessionStorage.getItem('wms_wijzig_modus') === 'true') {
+    const knop = document.getElementById('btn-vorige');
+    knop.setAttribute('href', '/scenario4');
+    knop.lastChild.textContent = ' Annuleren';
   }
 
   function volgende() {

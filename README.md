@@ -93,6 +93,69 @@ De app is dan bereikbaar op [http://127.0.0.1:5000](http://127.0.0.1:5000).
 > verschillende installaties. Gebruik in dat geval `py -m pip install -r
 > requirements.txt` en `py app.py`, zodat het zeker dezelfde Python is.
 
+### Technische opzet
+
+De applicatie is bewust eenvoudig gehouden, zonder JavaScript-framework en zonder
+build-stap.
+
+**Backend.** Een Flask-applicatie (`app.py`), in productie geserveerd door
+gunicorn. Flask rendert de pagina's en biedt een aantal JSON-endpoints. De browser
+praat nooit rechtstreeks met GitHub of de DSO API: dat verloopt via de server, die
+alleen verzoeken naar vaste, toegestane adressen doorlaat.
+
+| Endpoint | Waarvoor |
+|---|---|
+| `/api/fetch-data` | Dataset- en tabelgegevens uit het Amsterdams Schema |
+| `/api/collecties` | Bestaande collecties uit het kaartlagen-register |
+| `/api/sublagen` | Bestaande sublagen binnen een collectie |
+| `/api/fetch-columns` | Kolomnamen voor filter en label, uit de DSO API |
+| `/api/generate-mapfile` | Een nieuwe MapFile |
+| `/api/add-layer` | Een laag toevoegen aan een bestaande MapFile |
+| `/api/replace-layer` | Een bestaande laag vervangen |
+| `/healthz` | Healthcheck voor Docker en loadbalancers |
+
+**Frontend.** Server-side gerenderde Jinja2-templates met gewone HTML, CSS en
+vanilla JavaScript. Alle pagina's erven van `templates/base.html`, dat de header,
+de huisstijl en de gedeelde opmaak bevat. De huisstijlkleuren staan als
+CSS-variabelen (`--red`, `--ink`, enzovoort) in dat bestand. Dynamische gegevens
+worden met `fetch` bij de endpoints hierboven opgehaald.
+
+**Opmaak.** De lettertypen DM Sans en DM Mono komen van Google Fonts, iconen zijn
+inline SVG, en het logo staat in `static/logo_amsterdam.svg`. De syntaxkleuring
+van de MapFile is een handvol reguliere expressies, geen externe bibliotheek.
+
+**Opbouw van de repository**
+
+```
+app.py                     Flask-applicatie en API-endpoints
+requirements.txt           Python-afhankelijkheden
+Dockerfile                 Containerdefinitie
+docker-compose.yml         Lokaal draaien met Docker
+static/
+  logo_amsterdam.svg
+templates/
+  base.html                Gedeelde opmaak, header en huisstijl
+  intro.html               Startpagina: publiceren of alleen een WMS
+  pub_schema.html          Link naar de tabeldefinitie en gegevens ophalen
+  pub_kaartlaag.html       Collectie, sublaag en kaartlaagnaam
+  pub_eigenschappen.html   Detailpagina, activeerbaarheid en publieke toegang
+  pub_samenvatting.html    Controle van de publicatie-aanvraag
+  scenario1.html           WMS stap 1: MapFile-naam en groepsnaam
+  scenario2.html           WMS stap 2: externe bronnen
+  scenario3.html           WMS stap 3: filter, kleur en label
+  scenario4.html           WMS stap 4 en 5: MapFile, aanvraag en downloads
+```
+
+De `pub_`-templates vormen het publicatiedeel, de `scenario`-templates het
+WMS-deel. Kiest de gebruiker op de startpagina "alleen een WMS maken", dan gaat hij
+direct naar `scenario1.html`.
+
+**Doorontwikkeling.** Iedereen die HTML en wat JavaScript kent, kan een template
+openen en aanpassen, zonder Node-toolchain. Het nadeel is dat sommige templates
+lang zijn geworden, vooral `scenario4.html`. Groeit de tool verder, dan is het
+uitsplitsen van de JavaScript naar losse bestanden in `static/` de eerste logische
+stap, nog voordat een framework in beeld komt.
+
 ### Waar de gegevens blijven
 
 De applicatie bewaart niets aan de serverkant. Er is geen database nodig, ook geen

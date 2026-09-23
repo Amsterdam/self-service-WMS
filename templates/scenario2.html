@@ -19,8 +19,8 @@
   <div class="card-header">
     <h2>Gegevens uit externe bronnen halen</h2>
     <p class="subtitle">
-      Vul de twee URL's in en klik op <strong>Gegevens ophalen</strong>. De benodigde gegevens worden
-      automatisch uit het Amsterdamse schema en de DSO API opgehaald.
+      Vul de URL van de tabeldefinitie in en klik op <strong>Gegevens ophalen</strong>. De benodigde gegevens worden
+      automatisch uit het Amsterdamse schema en de DSO API opgehaald. Het API-eindpunt wordt uit het schemapad afgeleid.
     </p>
   </div>
 
@@ -64,13 +64,14 @@
                autocomplete="off"/>
       </div>
 
-      <div class="form-group">
+      <!-- Wordt afgeleid uit de tabel-URL; alleen zichtbaar als dat mislukt -->
+      <div class="form-group" id="api-correctie" style="display:none;">
         <label>
           DSO API URL <span class="req">*</span>
           <span class="tooltip-icon">?
             <span class="tooltip-text">
-              De URL naar het DSO API eindpunt. Hieruit wordt het geometrietype opgehaald,
-              bijv. Point, Polygon of LineString.
+              De URL kon niet uit het schemapad worden afgeleid. Vul hem hier in en
+              haal de gegevens opnieuw op.
             </span>
           </span>
         </label>
@@ -191,7 +192,6 @@
   const step2 = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
   if (step2.url_dataset) document.getElementById('url_dataset').value = step2.url_dataset;
   if (step2.url_tabel)   document.getElementById('url_tabel').value   = step2.url_tabel;
-  if (step2.url_api)     document.getElementById('url_api').value     = step2.url_api;
 
   // ── Toon laagnaam-veld in toevoeg- én wijzig-modus ─
   const toevoegModus = sessionStorage.getItem('wms_toevoegen_modus') === 'true';
@@ -252,8 +252,8 @@
     const errEl = document.getElementById('error-msg');
     errEl.style.display = 'none';
 
-    if (!url_tabel || !url_api) {
-      errEl.textContent = 'Vul beide URL-velden in voordat u gegevens ophaalt.';
+    if (!url_tabel) {
+      errEl.textContent = 'Vul de tabel-URL in voordat u gegevens ophaalt.';
       errEl.style.display = 'block';
       return;
     }
@@ -310,6 +310,16 @@
         errEl.style.display = 'block';
       }
 
+      // ── De API-URL: afgeleid uit het schemapad, of handmatig ingevuld ──
+      const url_api_definitief = url_api || data.url_api_afgeleid || '';
+      document.getElementById('api-correctie').style.display =
+        url_api_definitief ? 'none' : 'block';
+      if (!url_api_definitief) {
+        errEl.innerHTML = 'De DSO API URL kon niet uit het schemapad worden afgeleid. '
+                        + 'Vul hem hierboven in en haal de gegevens opnieuw op.';
+        errEl.style.display = 'block';
+      }
+
       // ── Resultaten tonen ─────────────────────────────────────────────
       const rows = [
         { key: 'Team',            val: data.publisher    || '—' },
@@ -318,6 +328,9 @@
         { key: 'Geometrietype',   val: data.geometryType || '—' },
         { key: 'Uniek ID veld',   val: data.unique_id    || '—' },
         { key: 'Autorisatie',     val: data.auth         || '—' },
+        { key: 'DSO API URL',     val: (url_api_definitief || '—')
+            + (url_api ? '' : ' <span style="font-size:11px;color:var(--ink-3);'
+                            + 'text-transform:uppercase;letter-spacing:.04em;">afgeleid</span>') },
       ];
 
       const container = document.getElementById('result-rows');
@@ -332,7 +345,9 @@
 
       // Sla alles op — keys matchen wat app.py teruggeeft
       const step2data = {
-        url_dataset, url_tabel, url_api,
+        url_dataset: data.url_dataset_afgeleid || url_dataset,
+        url_tabel,
+        url_api: url_api_definitief,
         table_name:   data.table_name   || '',
         publisher:    data.publisher    || '',
         auth:         data.auth         || '',
@@ -358,8 +373,8 @@
         );
       }
 
-      // Volgende knop activeren — maar check eerst laagnaam in toevoeg-modus
-      activeerVolgendeKnop();
+      // Volgende knop activeren — alleen als de API-URL bekend is
+      if (url_api_definitief) activeerVolgendeKnop();
 
     } catch (err) {
       errEl.textContent = 'Netwerkfout: ' + err.message;

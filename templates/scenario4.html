@@ -84,6 +84,10 @@
     <!-- ── Wijzig layer sectie ──────────────────── -->
     <div id="wijzig-layer-sectie" style="display:none; margin-top:20px;">
       <div class="section-label">Wijzig layer</div>
+      <p style="font-size:13px; color:var(--ink-3); line-height:1.55; margin-bottom:14px;">
+        Klik op een laag om de bron, het filter, de kleur of het label opnieuw in te stellen.
+        De rest van de MapFile en uw kaartlaagaanvraag blijven ongewijzigd.
+      </p>
       <div id="laag-knoppen" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
     </div>
 
@@ -95,7 +99,7 @@
           <path d="M2 12V8h4" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        Maak een nieuwe WMS
+        Opnieuw beginnen
       </button>
       <button class="btn btn-add-layer" id="btn-add-layer" onclick="voegNieuweLaagToe()">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -182,6 +186,14 @@
   }
   .aanvr-rij:last-child { border-bottom: none; }
   .aanvr-rij.kolom { flex-direction: column; align-items: stretch; gap: 10px; }
+  /* Scheiding tussen de lagen in de MapFile-sectie */
+  .aanvr-rij.laagkop {
+    border-top: 1.5px solid var(--border);
+    background: var(--surface);
+  }
+  .aanvr-rij.laagkop:first-child { border-top: none; }
+  .aanvr-rij.laagkop .aanvr-vraag,
+  .aanvr-rij.laagkop .aanvr-antw { font-weight: 700; font-style: italic; }
   .aanvr-vraag { color: var(--ink-2); flex: 1; min-width: 200px; }
 
   /* Attributen als tabel in plaats van een lange opsomming */
@@ -353,6 +365,9 @@
       renderHighlightedMapfile(mapfileContent);
       aantalLagen = 1;
       updateLaagTeller();
+      // Bij een nieuwe MapFile begint ook de lijst met kaartlaagaanvragen opnieuw
+      sessionStorage.removeItem('wms_kaartlagen');
+      bewaarKaartlaag(actieveLaagnaam);
       // Sla mapfile op voor eventuele extra lagen
       sessionStorage.setItem('wms_bestaande_mapfile', mapfileContent);
       sessionStorage.setItem('wms_aantal_lagen', '1');
@@ -430,12 +445,41 @@
   // ── Wijzig een bestaande laag ─────────────────
   function wijzigLaag(laagNaam) {
     sessionStorage.setItem('wms_wijzig_modus',          'true');
-    sessionStorage.setItem('wms_wijzig_laagnaam',       laagNaam);  // wordt naam in stap 2 (aanpasbaar)
-    sessionStorage.setItem('wms_wijzig_laagnaam_orig',  laagNaam);  // origineel — voor replace-layer zoekterm
+    sessionStorage.setItem('wms_wijzig_laagnaam',       laagNaam);  // aanpasbaar
+    sessionStorage.setItem('wms_wijzig_laagnaam_orig',  laagNaam);  // zoekterm voor replace-layer
     sessionStorage.setItem('wms_bestaande_mapfile',     mapfileContent);
     sessionStorage.setItem('wms_aantal_lagen',          String(aantalLagen));
     sessionStorage.removeItem('wms_step2');
     sessionStorage.removeItem('wms_step3');
+
+    // In de publicatieroute hoort bij deze laag een kaartlaagaanvraag. Die moet
+    // mee veranderen, anders verwijst de aanvraag naar de oude dataset. Laad de
+    // opgeslagen antwoorden van déze laag terug zodat pagina 3 en 4 ze tonen.
+    if (sessionStorage.getItem('wms_route') === 'publicatie') {
+      const entry = leesKaartlagen().find(x => x.layer_name === laagNaam);
+      if (entry) {
+        sessionStorage.setItem('wms_kaartlaag', JSON.stringify({
+          collectie:       entry.collectie.naam,
+          collectie_nieuw: entry.collectie.nieuw,
+          sublaag:         entry.sublaag.naam,
+          sublaag_nieuw:   entry.sublaag.nieuw,
+          kaartlaag:       entry.kaartlaag,
+          kaartlaag_label: entry.kaartlaag_label,
+        }));
+        sessionStorage.setItem('wms_detailpagina', JSON.stringify({
+          aan:        entry.detailpagina.gewenst,
+          attributen: entry.detailpagina.attributen || [],
+        }));
+        sessionStorage.setItem('wms_eigenschappen', JSON.stringify({
+          activeerbaar: entry.activeerbaar,
+          publiek:      entry.publiek_toegankelijk,
+        }));
+        sessionStorage.setItem('wms_wijzig_schema_url',
+          (entry.dataset && entry.dataset.schema_tabel_url) || '');
+      }
+      window.location.href = '/publicatie/schema';
+      return;
+    }
     window.location.href = '/scenario2';
   }
 
@@ -446,7 +490,73 @@
     sessionStorage.setItem('wms_aantal_lagen', String(aantalLagen));
     sessionStorage.removeItem('wms_step2');
     sessionStorage.removeItem('wms_step3');
+
+    // In de publicatieroute hoort bij elke laag een eigen kaartlaagaanvraag,
+    // met een eigen collectie en sublaag. De gebruiker doorloopt daarom eerst
+    // het schema en het aanvraagformulier, en pas daarna filter en kleur.
+    if (sessionStorage.getItem('wms_route') === 'publicatie') {
+      sessionStorage.removeItem('wms_kaartlaag');
+      sessionStorage.removeItem('wms_detailpagina');
+      sessionStorage.removeItem('wms_eigenschappen');
+      sessionStorage.removeItem('wms_nieuwe_laagnaam');
+      window.location.href = '/publicatie/schema';
+      return;
+    }
     window.location.href = '/scenario2';
+  }
+
+  // ── Kaartlaagaanvragen per laag bewaren ───────
+  // Elke LAYER in de MapFile hoort bij één kaartlaag in de legenda, met een
+  // eigen collectie en sublaag. Deze lijst houdt ze bij elkaar; de sleutel is
+  // de LAYER NAME.
+  function leesKaartlagen() {
+    try { return JSON.parse(sessionStorage.getItem('wms_kaartlagen') || '[]'); }
+    catch { return []; }
+  }
+
+  function bewaarKaartlaag(layerName, oudeNaam) {
+    if (!layerName) return;
+    const k = JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}');
+    if (!k.kaartlaag) return;          // alleen-WMS route: geen aanvraag
+
+    const d = JSON.parse(sessionStorage.getItem('wms_detailpagina') || '{}');
+    const e = JSON.parse(sessionStorage.getItem('wms_eigenschappen') || '{}');
+    const s2 = JSON.parse(sessionStorage.getItem('wms_step2') || '{}');
+    const s3 = JSON.parse(sessionStorage.getItem('wms_step3') || '{}');
+    const pub = JSON.parse(sessionStorage.getItem('wms_publicatie') || '{}');
+
+    const entry = {
+      layer_name:      layerName,
+      collectie:       { naam: k.collectie || '', nieuw: !!k.collectie_nieuw },
+      sublaag:         { naam: k.sublaag   || '', nieuw: !!k.sublaag_nieuw },
+      kaartlaag:       k.kaartlaag || layerName,
+      kaartlaag_label: k.kaartlaag_label || '',
+      detailpagina:    { gewenst: d.aan === true, attributen: d.attributen || [] },
+      activeerbaar:         e.activeerbaar,
+      publiek_toegankelijk: e.publiek,
+      dataset: {
+        titel:            pub.dataset_title || '',
+        databasetabel:    s2.table_name     || '',
+        schema_tabel_url: s2.url_tabel      || '',
+        dso_api_url:      s2.url_api        || '',
+        thema:            pub.themes        || [],
+      },
+      wms: {
+        geometriekolom: s2.mainGeometry || '',
+        geometrietype:  s2.geometryType || '',
+        uniek_id:       s2.unique_id    || '',
+        crs:            s2.crs          || '',
+        kleur:          s3.color        || '',
+        filter: s3.filter_aan ? { kolom: s3.filter_kolom, waarde: s3.filter_waarde } : null,
+        label_kolom: s3.label_aan ? (s3.label_kolom || '') : null,
+      },
+    };
+
+    const lijst = leesKaartlagen();
+    const zoek  = oudeNaam || layerName;
+    const i = lijst.findIndex(x => x.layer_name === zoek);
+    if (i >= 0) lijst[i] = entry; else lijst.push(entry);
+    sessionStorage.setItem('wms_kaartlagen', JSON.stringify(lijst));
   }
 
   // ── In- en uitklappen van kaartkoppen ─────────
@@ -491,103 +601,117 @@
   // Alleen wat de gebruiker daadwerkelijk heeft geantwoord. De technische
   // MapFile-instellingen staan uitsluitend in mapfileGegevens(), zodat
   // dezelfde waarde niet in twee secties terechtkomt.
-  function publicatieVragen(d) {
+  // ── De publicatievragen per kaartlaag ─────────
+  // Elke kaartlaag heeft een eigen collectie, sublaag en detailpagina. De
+  // technische MapFile-gegevens staan uitsluitend in mapfileGegevens(), zodat
+  // dezelfde waarde niet in twee secties terechtkomt.
+  function routeVraag(d) {
+    return { groep: 'Publicatie',
+      vraag: 'Wilt u een dataset op de kaart van data.amsterdam.nl publiceren of alleen een WMS maken?',
+      antwoord: d.route === 'publicatie'
+        ? 'Publiceren op data.amsterdam.nl'
+        : 'Alleen een WMS maken' };
+  }
+
+  function kaartlaagVragen(k) {
     return [
       { groep: 'Publicatie',
-        vraag: 'Wilt u een dataset op de kaart van data.amsterdam.nl publiceren of alleen een WMS maken?',
-        antwoord: d.route === 'publicatie'
-          ? 'Publiceren op data.amsterdam.nl'
-          : 'Alleen een WMS maken' },
-      { groep: 'Publicatie',
         vraag: 'Wat is het thema van de dataset?',
-        antwoord: (d.publicatie.themes || []).join(', ') || 'Niet opgegeven' },
+        antwoord: (k.dataset.thema || []).join(', ') || 'Niet opgegeven' },
       { groep: 'Publicatie',
         vraag: 'Onder welke collectie komt de kaartlaag?',
-        antwoord: d.kaartlaag.collectie || 'Niet opgegeven',
-        nieuw: !!d.kaartlaag.collectie_nieuw },
+        antwoord: k.collectie.naam || 'Niet opgegeven',
+        nieuw: !!k.collectie.nieuw },
       { groep: 'Publicatie',
         vraag: 'Onder welke sublaag komt de kaartlaag?',
-        antwoord: d.kaartlaag.sublaag || 'Niet opgegeven',
-        nieuw: !!d.kaartlaag.sublaag_nieuw },
+        antwoord: k.sublaag.naam || 'Niet opgegeven',
+        nieuw: !!k.sublaag.nieuw },
       { groep: 'Publicatie',
         vraag: 'Wat is de naam van de kaartlaag?',
-        antwoord: d.kaartlaag.kaartlaag || 'Niet opgegeven', mono: true },
+        antwoord: k.kaartlaag || 'Niet opgegeven', mono: true },
       { groep: 'Detailpagina',
         vraag: 'Moet er een detailpagina komen?',
-        antwoord: jaNee(d.detail.aan) },
+        antwoord: jaNee(k.detailpagina.gewenst) },
       { groep: 'Detailpagina',
         vraag: 'Welke attributen worden op de detailpagina getoond?',
-        // Het antwoord is een tabel: attribuutnaam naast de weergavenaam
-        tabel: d.detail.aan ? (d.detail.attributen || []) : null,
-        antwoord: d.detail.aan ? null : 'Niet van toepassing' },
+        tabel: k.detailpagina.gewenst ? (k.detailpagina.attributen || []) : null,
+        antwoord: k.detailpagina.gewenst ? null : 'Niet van toepassing' },
       { groep: 'Zichtbaarheid',
         vraag: 'Moet de kaartlaag activeerbaar zijn?',
-        antwoord: jaNee(d.eigen.activeerbaar) },
+        antwoord: jaNee(k.activeerbaar) },
       { groep: 'Zichtbaarheid',
         vraag: 'Mag de kaartlaag voor het publiek toegankelijk zijn?',
-        antwoord: jaNee(d.eigen.publiek) },
+        antwoord: jaNee(k.publiek_toegankelijk) },
     ];
   }
 
-  // ── De technische MapFile-gegevens ────────────
   function mapfileGegevens(d) {
+    const lagen = leesKaartlagen();
+    // Alleen-WMS route: geen kaartlaagaanvragen, dus terugvallen op de sessie
+    const uitSessie = [{
+      layer_name:     d.kaartlaag.kaartlaag || d.step1.wms_laagnaam || '',
+      databasetabel:  d.step2.table_name   || '',
+      geometriekolom: d.step2.mainGeometry || '',
+      geometrietype:  d.step2.geometryType || '',
+      uniek_id:       d.step2.unique_id    || '',
+      crs:            d.step2.crs          || '',
+      kleur:          d.step3.color        || '',
+      filter: d.step3.filter_aan
+        ? { kolom: d.step3.filter_kolom, waarde: d.step3.filter_waarde } : null,
+      label_kolom: d.step3.label_aan ? (d.step3.label_kolom || '') : null,
+    }];
+
     return {
       naam:           d.step1.mapfile_naam   || '',
       wms_groepsnaam: d.step1.wms_groepsnaam || '',
-      bron: {
-        dataset_titel:      d.publicatie.dataset_title || '',
-        dataset_id:         d.publicatie.dataset_id    || '',
-        tabel_id:           d.publicatie.tabel_id      || '',
-        team:               d.step2.publisher   || '',
-        autorisatie_data:   d.step2.auth        || '',
-        schema_tabel_url:   d.step2.url_tabel   || '',
-        schema_dataset_url: d.step2.url_dataset || '',
-        dso_api_url:        d.step2.url_api     || '',
-      },
-      // Lijst, zodat een tweede kaartlaag hier later bij kan
-      lagen: [
-        {
-          layer_name:     d.kaartlaag.kaartlaag || d.step1.wms_laagnaam || '',
-          databasetabel:  d.step2.table_name   || '',
-          geometriekolom: d.step2.mainGeometry || '',
-          geometrietype:  d.step2.geometryType || '',
-          uniek_id:       d.step2.unique_id    || '',
-          crs:            d.step2.crs          || '',
-          kleur:          d.step3.color        || '',
-          filter: d.step3.filter_aan
-            ? { kolom: d.step3.filter_kolom, waarde: d.step3.filter_waarde }
-            : null,
-          label_kolom: d.step3.label_aan ? (d.step3.label_kolom || '') : null,
-        },
-      ],
+      lagen: lagen.length
+        ? lagen.map(k => ({
+            layer_name:       k.layer_name,
+            databasetabel:    k.dataset.databasetabel,
+            schema_tabel_url: k.dataset.schema_tabel_url,
+            dso_api_url:      k.dataset.dso_api_url,
+            geometriekolom:   k.wms.geometriekolom,
+            geometrietype:    k.wms.geometrietype,
+            uniek_id:         k.wms.uniek_id,
+            crs:              k.wms.crs,
+            kleur:            k.wms.kleur,
+            filter:           k.wms.filter,
+            label_kolom:      k.wms.label_kolom,
+          }))
+        : uitSessie,
     };
   }
 
   // Dezelfde MapFile-gegevens, maar als leesbare regels voor het scherm
   function mapfileRegels(mf) {
-    const l = mf.lagen[0] || {};
-    return [
-      { vraag: 'Naam van de MapFile',   antwoord: mf.naam || '—', mono: true },
-      { vraag: 'WMS-groepsnaam',        antwoord: mf.wms_groepsnaam || '—', mono: true },
-      { vraag: 'LAYER NAME',            antwoord: l.layer_name || '—', mono: true },
-      { vraag: 'Databasetabel',         antwoord: l.databasetabel || '—', mono: true },
-      { vraag: 'Geometriekolom',        antwoord: l.geometriekolom || '—', mono: true },
-      { vraag: 'Geometrietype',         antwoord: l.geometrietype || '—', mono: true },
-      { vraag: 'Uniek ID-veld',         antwoord: l.uniek_id || '—', mono: true },
-      { vraag: 'Coördinaatstelsel',     antwoord: l.crs || '—', mono: true },
-      { vraag: 'Kleur',                 antwoord: l.kleur || '—', mono: true },
-      { vraag: 'Filter op de data',     antwoord: l.filter
-          ? `${l.filter.kolom} = '${l.filter.waarde}'` : 'Geen', mono: !!l.filter },
-      { vraag: 'Label op de kaart',     antwoord: l.label_kolom || 'Geen',
-          mono: !!l.label_kolom },
+    const rijen = [
+      { vraag: 'Naam van de MapFile', antwoord: mf.naam || '\u2014', mono: true },
+      { vraag: 'WMS-groepsnaam',      antwoord: mf.wms_groepsnaam || '\u2014', mono: true },
     ];
+    mf.lagen.forEach((l, i) => {
+      const pre = mf.lagen.length > 1 ? `Laag ${i + 1} \u00b7 ` : '';
+      rijen.push(
+        { vraag: pre + 'LAYER NAME', antwoord: l.layer_name || '\u2014',
+          mono: true, laagkop: mf.lagen.length > 1 },
+        { vraag: pre + 'Databasetabel',     antwoord: l.databasetabel || '\u2014', mono: true },
+        { vraag: pre + 'Geometrietype',     antwoord: l.geometrietype || '\u2014', mono: true },
+        { vraag: pre + 'Uniek ID-veld',     antwoord: l.uniek_id || '\u2014', mono: true },
+        { vraag: pre + 'Co\u00f6rdinaatstelsel', antwoord: l.crs || '\u2014', mono: true },
+        { vraag: pre + 'Kleur',             antwoord: l.kleur || '\u2014', mono: true },
+        { vraag: pre + 'Filter op de data', antwoord: l.filter
+            ? `${l.filter.kolom} = '${l.filter.waarde}'` : 'Geen', mono: !!l.filter },
+        { vraag: pre + 'Label op de kaart', antwoord: l.label_kolom || 'Geen',
+            mono: !!l.label_kolom },
+      );
+    });
+    return rijen;
   }
 
   function renderAanvraag() {
     const d = leesAanvraagData();
 
     // Bij de route "alleen een WMS maken" is er geen publicatie-aanvraag
-    if (d.route !== 'publicatie' || !d.kaartlaag.kaartlaag) {
+    if (d.route !== 'publicatie' || leesKaartlagen().length === 0) {
       document.getElementById('card-aanvraag').style.display = 'none';
       return;
     }
@@ -619,20 +743,32 @@
       if (q.antwoord === 'Ja')  antw = '<span class="aanvr-ja">Ja</span>';
       if (q.antwoord === 'Nee') antw = '<span class="aanvr-nee">Nee</span>';
       return `
-        <div class="aanvr-rij">
+        <div class="aanvr-rij${q.laagkop ? ' laagkop' : ''}">
           <span class="aanvr-vraag">${escHtml(q.vraag)}</span>
           <span class="aanvr-antw ${q.mono ? 'mono' : ''}">${antw}${
             q.nieuw ? '<span class="aanvr-nieuw">nieuw</span>' : ''}</span>
         </div>`;
     }
 
-    const vragen = publicatieVragen(d);
+    const lagen = leesKaartlagen();
     let html = '';
-    ['Publicatie', 'Detailpagina', 'Zichtbaarheid'].forEach(g => {
-      const items = vragen.filter(q => q.groep === g);
-      if (!items.length) return;
-      html += `<div class="aanvr-groep">${g}</div>`;
-      html += `<div class="aanvr-tabel">${items.map(rijHtml).join('')}</div>`;
+
+    html += `<div class="aanvr-groep">Publicatie</div>`;
+    html += `<div class="aanvr-tabel">${rijHtml(routeVraag(d))}</div>`;
+
+    lagen.forEach((k, i) => {
+      const titel = lagen.length > 1
+        ? `Kaartlaag ${i + 1}: ${escHtml(k.kaartlaag)}`
+        : 'Kaartlaag';
+      html += `<div class="aanvr-groep">${titel}</div>`;
+      const vragen = kaartlaagVragen(k);
+      ['Publicatie', 'Detailpagina', 'Zichtbaarheid'].forEach(g => {
+        const items = vragen.filter(q => q.groep === g);
+        if (items.length) {
+          html += `<div class="aanvr-tabel" style="margin-bottom:10px;">${
+            items.map(rijHtml).join('')}</div>`;
+        }
+      });
     });
 
     // De MapFile-gegevens als eigen blok
@@ -662,19 +798,24 @@
         ? 'publicatie_op_data_amsterdam'
         : 'alleen_wms',
 
-      vragen_en_antwoorden: publicatieVragen(d).map(q => {
-        const item = { groep: q.groep, vraag: q.vraag };
-        if (q.tabel) {
-          item.antwoord_tabel = {
-            kolommen: ['attribuut_naam', 'weergave_op_frontend'],
-            rijen: q.tabel.map(a => [a.kolom, a.label]),
-          };
-        } else {
-          item.antwoord = q.antwoord;
-        }
-        if (q.nieuw) item.nieuw = true;
-        return item;
-      }),
+      vragen_en_antwoorden: [
+        { groep: 'Publicatie', vraag: routeVraag(d).vraag, antwoord: routeVraag(d).antwoord },
+        ...leesKaartlagen().flatMap(k =>
+          kaartlaagVragen(k).map(q => {
+            const item = { kaartlaag: k.kaartlaag, groep: q.groep, vraag: q.vraag };
+            if (q.tabel) {
+              item.antwoord_tabel = {
+                kolommen: ['attribuut_naam', 'weergave_op_frontend'],
+                rijen: q.tabel.map(a => [a.kolom, a.label]),
+              };
+            } else {
+              item.antwoord = q.antwoord;
+            }
+            if (q.nieuw) item.nieuw = true;
+            return item;
+          })
+        ),
+      ],
 
       mapfile: mapfileGegevens(d),
     };
@@ -682,8 +823,8 @@
 
   function downloadAanvraag() {
     const json = JSON.stringify(bouwAanvraagJson(), null, 2);
-    const naam = (JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}').kaartlaag
-                  || 'kaartlaag');
+    const step1 = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
+    const naam = step1.wms_groepsnaam || step1.mapfile_naam || 'aanvraag';
     const blob = new Blob([json], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -693,6 +834,13 @@
   }
 
   function nieuweWMS() {
+    const bevestigd = window.confirm(
+      'Opnieuw beginnen wist alles wat u tot nu toe heeft ingevuld: de '
+      + 'kaartlaagaanvraag, de MapFile en alle toegevoegde lagen.\n\n'
+      + 'Download eerst wat u wilt bewaren.\n\n'
+      + 'Weet u zeker dat u opnieuw wilt beginnen?'
+    );
+    if (!bevestigd) return;
     sessionStorage.clear();
     window.location.href = '/';
   }
@@ -728,6 +876,7 @@
     // ── Wijzig-modus: vervang een bestaande laag ──
     if (wijzigModus === 'true' && bestaandeMap) {
       sessionStorage.removeItem('wms_wijzig_modus');
+      sessionStorage.removeItem('wms_wijzig_schema_url');
       aantalLagen = savedLagen;
 
       if (s2.table_name && s3.color) {
@@ -791,6 +940,7 @@
 
       const data = await resp.json();
       mapfileContent = data.mapfile || '';
+      bewaarKaartlaag(nieuweNaam, origineeleNaam);
       renderHighlightedMapfile(mapfileContent);
 
       // Bewaar de bijgewerkte mapfile zodat verdere bewerkingen correct zijn
@@ -844,6 +994,7 @@
       mapfileContent = data.mapfile || '';
       aantalLagen++;
       updateLaagTeller();
+      bewaarKaartlaag(nieuweLaagNaam);
       renderHighlightedMapfile(mapfileContent);
 
       document.getElementById('card-resultaat').style.display = 'block';

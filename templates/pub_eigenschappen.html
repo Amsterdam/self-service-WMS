@@ -321,7 +321,11 @@
       publiek: publiekAan,
     }));
 
-    window.location.href = '/publicatie/samenvatting';
+    // Bij een toegevoegde laag zijn de MapFile-naam en groepsnaam al bekend,
+    // dus door naar filter en kleur in plaats van naar de samenvatting.
+    const inMapfileModus = sessionStorage.getItem('wms_toevoegen_modus') === 'true'
+                        || sessionStorage.getItem('wms_wijzig_modus') === 'true';
+    window.location.href = inMapfileModus ? '/scenario3' : '/publicatie/samenvatting';
   }
 
   // ── Herstel bij terugnavigatie ────────────────

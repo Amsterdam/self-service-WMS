@@ -24,6 +24,11 @@
 
   <div class="card-body">
 
+    <div id="volgende-laag-melding" class="info-regel" style="display:none; max-width:680px;">
+      Dit is de aanvraag voor <strong>kaartlaag <span id="volgende-laag-nr">2</span></strong>.
+      Collectie en sublaag zijn overgenomen van de vorige kaartlaag; u kunt ze aanpassen.
+    </div>
+
     <!-- ── 1. Collectie ───────────────────────── -->
     <div class="section-label">Collectie</div>
     <p class="veld-uitleg">
@@ -399,19 +404,60 @@
     const step1 = JSON.parse(sessionStorage.getItem('wms_step1') || '{}');
     step1.wms_laagnaam = kaart;
     sessionStorage.setItem('wms_step1', JSON.stringify(step1));
+    // Stap 4 verwacht de laagnaam onder een eigen sleutel per modus
+    if (sessionStorage.getItem('wms_toevoegen_modus') === 'true') {
+      sessionStorage.setItem('wms_nieuwe_laagnaam', kaart);
+    }
+    if (sessionStorage.getItem('wms_wijzig_modus') === 'true') {
+      sessionStorage.setItem('wms_wijzig_laagnaam', kaart);
+    }
 
     window.location.href = '/publicatie/eigenschappen';
   }
 
   // ── Herstel bij terugnavigatie ─────────────────
   (function herstel() {
-    const bewaard = JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}');
+    let bewaard = JSON.parse(sessionStorage.getItem('wms_kaartlaag') || '{}');
+
+    // Tweede of volgende laag: neem collectie en sublaag van de vorige laag over
+    // als voorzet. De gebruiker kan ze aanpassen; de kaartlaagnaam blijft leeg.
+    const toevoegModus = sessionStorage.getItem('wms_toevoegen_modus') === 'true';
+    const wijzigModus  = sessionStorage.getItem('wms_wijzig_modus') === 'true';
+
+    if (wijzigModus) {
+      const melding = document.getElementById('volgende-laag-melding');
+      melding.innerHTML = 'U wijzigt de aanvraag voor kaartlaag <strong>'
+        + (bewaard.kaartlaag || '') + '</strong>. Past u hier ook de collectie, '
+        + 'sublaag of naam aan, dan verandert die mee in de MapFile.';
+      melding.style.display = 'block';
+    }
+
+    if (toevoegModus && !bewaard.kaartlaag) {
+      const lijst = JSON.parse(sessionStorage.getItem('wms_kaartlagen') || '[]');
+      const vorige = lijst[lijst.length - 1];
+      if (vorige) {
+        bewaard = {
+          collectie:       vorige.collectie.naam,
+          collectie_nieuw: vorige.collectie.nieuw,
+          sublaag:         vorige.sublaag.naam,
+          sublaag_nieuw:   vorige.sublaag.nieuw,
+        };
+        document.getElementById('volgende-laag-melding').style.display = 'block';
+        document.getElementById('volgende-laag-nr').textContent = lijst.length + 1;
+      }
+    }
     laadCollecties().then(() => {
       if (bewaard.collectie_nieuw) {
         zetCollModus('nieuw');
         document.getElementById('coll-nieuw-naam').value = bewaard.collectie || '';
       } else if (bewaard.collectie) {
         kiesCollectie(bewaard.collectie);
+      }
+      if (bewaard.sublaag_nieuw) {
+        zetSubModus('nieuw');
+        document.getElementById('sub-nieuw-naam').value = bewaard.sublaag || '';
+      } else if (bewaard.sublaag) {
+        kiesSublaag(bewaard.sublaag);
       }
       if (bewaard.kaartlaag_label) {
         document.getElementById('kaartlaag-naam').value = bewaard.kaartlaag_label;
